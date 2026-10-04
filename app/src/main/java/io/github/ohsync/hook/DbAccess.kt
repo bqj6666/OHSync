@@ -68,6 +68,27 @@ class DbAccess(private val xposed: XposedInterface) {
 
     private var fallbackStarted = false
 
+    /**
+     * 主动触发 OPPO 初始化数据库。
+     *
+     * 必要性：路 A 的 hook 只在 OPPO 自己去开库时才会触发。如果用户没打开 OPPO 健康，
+     * 它可能长时间不碰数据库，于是我们永远拿不到实例、点「立即同步」也毫无反应
+     * （实测日志会一直刷「路 B … INSTANCE 仍为 null（库未开）」）。
+     *
+     * 做法就是调它自己的入口 AppDatabase.getInstance(Context) —— 幂等、只读用途，
+     * 相当于提前把它本来也会做的初始化做掉，不修改任何健康数据。
+     */
+    private fun tryTriggerOpen(appDb: Class<?>, classLoader: ClassLoader): Boolean {
+        if (AppContextHolder.context == null) AppContextHolder.init()
+        val ctx = AppContextHolder.context ?: return false
+        return runCatching {
+            val m = appDb.getDeclaredMethod("getInstance", android.content.Context::class.java)
+            m.isAccessible = true
+            val created = m.invoke(null, ctx)
+            created != null
+        }.onFailure { Log.w(TAG, "主动开库失败", it) }.getOrDefault(false)
+    }
+
     private fun tryReflection(classLoader: ClassLoader, attempt: Int) {
         val appDb = try {
             Class.forName(APP_DATABASE, false, classLoader)
@@ -82,7 +103,14 @@ class DbAccess(private val xposed: XposedInterface) {
             return
         }
         if (instance == null) {
-            if (attempt % 10 == 1) Log.i(TAG, "路 B 第 $attempt 次：INSTANCE 仍为 null（库未开）")
+            // 还没初始化过：主动触发一次，别干等 OPPO 自己想起来开库
+            if (attempt == 1 || attempt % 10 == 1) {
+                Log.i(TAG, "路 B 第 $attempt 次：INSTANCE 为 null，主动触发开库")
+            }
+            if (tryTriggerOpen(appDb, classLoader)) {
+                // 触发成功后下一轮就能从 INSTANCE 取到实例
+                Log.i(TAG, "已主动触发 OPPO 数据库初始化")
+            }
             return
         }
         // Room 的 RoomDatabase.getOpenHelper() -> SupportSQLiteOpenHelper
@@ -112,7 +140,7 @@ class DbAccess(private val xposed: XposedInterface) {
         private const val TAG = "OHSyncDb"
         private const val APP_DATABASE = "com.heytap.databaseengineservice.db.AppDatabase"
         private const val RETRY_MS = 3000L
-        private const val MAX_TRIES = 40
+        private const val MAX_TRIES = 200
 
         private val DB_GETTERS = setOf("getReadableDatabase", "getWritableDatabase")
 

@@ -162,8 +162,8 @@ private fun StatusCard(status: io.github.ohsync.core.SyncStatus, onSync: () -> U
 
             if (!status.hookConnected) {
                 Text(
-                    "还没连上 OPPO 健康。请在 LSPosed 里启用本模块、作用域勾选「OPPO 健康」，" +
-                        "然后打开一次 OPPO 健康。",
+                    "还没读上数据。请确认：LSPosed 里已启用本模块、作用域勾选了「OPPO 健康」，" +
+                        "然后打开一次 OPPO 健康（应用需要它先把数据库准备好）。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
