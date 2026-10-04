@@ -36,6 +36,7 @@ object Pusher {
     }
 
     private fun send(type: String, records: List<SyncRecord>) {
+        if (AppContextHolder.context == null) AppContextHolder.init()
         val ctx = AppContextHolder.context
         if (ctx == null) {
             Log.e(TAG, "没有 Context，无法推送 $type")
