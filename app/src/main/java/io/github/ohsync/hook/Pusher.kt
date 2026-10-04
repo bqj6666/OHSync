@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.net.Uri
 import android.util.Log
 import io.github.ohsync.core.PayloadCodec
+import io.github.ohsync.core.RecordType
 import io.github.ohsync.core.SyncRecord
 
 /**
@@ -24,6 +25,14 @@ object Pusher {
             return
         }
         var total = 0
+
+        // 睡眠是多行拼一条记录，走独立路径
+        val sleep = SleepBuilder.build(reader)
+        if (sleep.isNotEmpty()) {
+            send(RecordType.SLEEP_SESSION.id, sleep)
+            total += sleep.size
+        }
+
         for (spec in specs) {
             val rows = reader.query(spec.sql)
             val records = rows.mapNotNull(spec.toRecord)

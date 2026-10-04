@@ -29,6 +29,12 @@ object PayloadCodec {
                 r.metadata.forEach { (k, s) -> m.put(k, s) }
                 o.put("m", m)
             }
+            // 睡眠分段：[startMs, endMs, stage]，用数组省体积
+            if (r.stages.isNotEmpty()) {
+                val st = JSONArray()
+                r.stages.forEach { g -> st.put(JSONArray().put(g.start).put(g.end).put(g.stage)) }
+                o.put("st", st)
+            }
             arr.put(o)
         }
         return arr.toString()
@@ -47,6 +53,13 @@ object PayloadCodec {
             o.optJSONObject("m")?.let { m ->
                 m.keys().forEach { k -> meta[k] = m.getString(k) }
             }
+            val stages = ArrayList<SleepStage>()
+            o.optJSONArray("st")?.let { arr ->
+                for (i in 0 until arr.length()) {
+                    val g = arr.getJSONArray(i)
+                    stages += SleepStage(g.getLong(0), g.getLong(1), g.getInt(2))
+                }
+            }
             out.add(
                 SyncRecord(
                     type = type,
@@ -56,6 +69,7 @@ object PayloadCodec {
                     values = values,
                     zoneOffsetSeconds = if (o.has("z")) o.getInt("z") else null,
                     metadata = meta,
+                    stages = stages,
                 )
             )
         }

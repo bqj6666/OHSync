@@ -94,8 +94,18 @@ object RecordMapper {
             RecordType.HRV -> HeartRateVariabilityRmssdRecord(
                 start, zo, r.double(V_RMSSD), metadata(cid))
 
+            // 睡眠：分段写进同一条记录，HC 原生就能画出阶段图
             RecordType.SLEEP_SESSION -> SleepSessionRecord(
-                start, zo, end, zo, metadata(cid))
+                start, zo, end, zo, metadata(cid),
+                null, null,
+                r.stages.map {
+                    SleepSessionRecord.Stage(
+                        startTime = Instant.ofEpochMilli(it.start),
+                        endTime = Instant.ofEpochMilli(it.end),
+                        stage = it.stage,
+                    )
+                },
+            )
 
             RecordType.BLOOD_PRESSURE -> BloodPressureRecord(
                 start, zo, metadata(cid),

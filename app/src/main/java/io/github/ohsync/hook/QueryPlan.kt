@@ -30,6 +30,7 @@ internal object QueryPlan {
     private const val TAG = "OHSyncPlan"
 
     /** 只同步最近这些天，避免一次把几年的分钟级明细全灌进 HC。 */
+    @Suppress("unused")
     private const val WINDOW_DAYS = 90L
 
     /**
@@ -54,6 +55,7 @@ internal object QueryPlan {
                 key == "dbheartrate" -> heartRateSpec(table, cols)?.let { out += it }
                 key == "dbbloodpressure" -> bloodPressureSpec(table, cols)?.let { out += it }
                 key == "dbbloodoxygensaturation" -> bloodOxygenSpec(table, cols)?.let { out += it }
+                // 睡眠不在这里：它是多行拼成一条会话，见 SleepBuilder
             }
         }
         Log.i(TAG, "生成 ${out.size} 条同步方案：${out.map { it.type.label }}")

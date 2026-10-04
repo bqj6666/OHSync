@@ -16,9 +16,14 @@ data class SyncRecord(
     val values: Map<String, Double> = emptyMap(),
     val zoneOffsetSeconds: Int? = null,
     val metadata: Map<String, String> = emptyMap(),
+    /** 睡眠分段。只有 SLEEP_SESSION 会用到，其余类型为空。 */
+    val stages: List<SleepStage> = emptyList(),
 ) {
     val recordType: RecordType get() = RecordType.fromId(type)
 }
+
+/** 一段睡眠阶段。[stage] 用 Health Connect 的 STAGE_TYPE_* 常量值。 */
+data class SleepStage(val start: Long, val end: Long, val stage: Int)
 
 /** 一次性推送请求。 */
 data class SyncBatch(
