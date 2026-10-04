@@ -31,6 +31,15 @@ internal object QueryPlan {
 
     /** 只同步最近这些天，避免一次把几年的分钟级明细全灌进 HC。 */
     private const val WINDOW_DAYS = 90L
+
+    /**
+     * 每种记录单次推送的上限。
+     *
+     * 实测一次全量是 8 万多条（血氧/心率这类连续测量每天几百条），
+     * 一次性写进 Health Connect 又慢又容易触发它的限流，所以取最近 N 条；
+     * clientRecordId 幂等，下次周期推送会把更早的慢慢补齐。
+     */
+    private const val PER_SPEC_LIMIT = 3000
     private val since: Long get() = System.currentTimeMillis() - WINDOW_DAYS * 86_400_000L
 
     fun forTables(reader: TableReader): List<TableSpec> {
@@ -65,7 +74,7 @@ internal object QueryPlan {
             if (column !in cols) return
             val sql = "SELECT $startCol$selectEnd, $column FROM $table " +
                 "WHERE $column > 0 AND $startCol >= $since ORDER BY $startCol DESC " +
-                "LIMIT ${TableReader.MAX_ROWS}"
+                "LIMIT $PER_SPEC_LIMIT"
             out += TableSpec(type, sql) { r ->
                 val start = r[startCol]?.toLongOrNull()
                 val value = r[column]?.toDoubleOrNull()
@@ -95,7 +104,7 @@ internal object QueryPlan {
     private fun weightSpec(table: String, cols: Set<String>): TableSpec? {
         if ("weight" !in cols || "measurement_timestamp" !in cols) return null
         val sql = "SELECT weight_id, measurement_timestamp, weight, body_fat_rate FROM $table " +
-            "WHERE weight > 0 ORDER BY measurement_timestamp DESC LIMIT ${TableReader.MAX_ROWS}"
+            "WHERE weight > 0 ORDER BY measurement_timestamp DESC LIMIT $PER_SPEC_LIMIT"
         return TableSpec(RecordType.WEIGHT, sql) { r ->
             val ts = r["measurement_timestamp"]?.toLongOrNull()
             val grams = r["weight"]?.toDoubleOrNull()
@@ -118,7 +127,7 @@ internal object QueryPlan {
         if ("heart_rate_value" !in cols || "data_created_timestamp" !in cols) return null
         val sql = "SELECT _id, data_created_timestamp, heart_rate_value FROM $table " +
             "WHERE heart_rate_value > 0 AND data_created_timestamp >= $since " +
-            "ORDER BY data_created_timestamp DESC LIMIT ${TableReader.MAX_ROWS}"
+            "ORDER BY data_created_timestamp DESC LIMIT $PER_SPEC_LIMIT"
         return TableSpec(RecordType.HEART_RATE, sql) { r ->
             val id = r["_id"] ?: return@TableSpec null
             val ts = r["data_created_timestamp"]?.toLongOrNull() ?: return@TableSpec null
@@ -146,7 +155,7 @@ internal object QueryPlan {
         if (!cols.containsAll(listOf("measure_timestamp", "systolic", "diastolic"))) return null
         val sql = "SELECT measure_timestamp, systolic, diastolic FROM $table " +
             "WHERE systolic > 0 AND diastolic > 0 AND measure_timestamp >= $since " +
-            "ORDER BY measure_timestamp DESC LIMIT ${TableReader.MAX_ROWS}"
+            "ORDER BY measure_timestamp DESC LIMIT $PER_SPEC_LIMIT"
         return TableSpec(RecordType.BLOOD_PRESSURE, sql) { r ->
             val ts = r["measure_timestamp"]?.toLongOrNull() ?: return@TableSpec null
             val sys = r["systolic"]?.toDoubleOrNull() ?: return@TableSpec null
@@ -174,7 +183,7 @@ internal object QueryPlan {
         if (valueCol !in cols || "data_created_timestamp" !in cols) return null
         val sql = "SELECT _id, data_created_timestamp, $valueCol FROM $table " +
             "WHERE $valueCol > 0 AND data_created_timestamp >= $since " +
-            "ORDER BY data_created_timestamp DESC LIMIT ${TableReader.MAX_ROWS}"
+            "ORDER BY data_created_timestamp DESC LIMIT $PER_SPEC_LIMIT"
         return TableSpec(RecordType.BLOOD_OXYGEN, sql) { r ->
             val id = r["_id"] ?: return@TableSpec null
             val ts = r["data_created_timestamp"]?.toLongOrNull() ?: return@TableSpec null
