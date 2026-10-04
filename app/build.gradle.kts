@@ -1,7 +1,5 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -34,10 +32,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlin {
-        jvmToolchain(21)
-    }
-
     buildFeatures {
         compose = true
     }
@@ -46,15 +40,8 @@ android {
         resources.excludes += setOf(
             "META-INF/DEPENDENCIES",
             "META-INF/LICENSE*",
-            "META-INF/NOTICE*"
+            "META-INF/NOTICE*",
         )
-    }
-
-    sourceSets {
-        getByName("main") {
-            java.srcDirs("src/main/java")
-            resources.srcDirs("src/main/resources")
-        }
     }
 }
 
@@ -71,9 +58,8 @@ dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.ui:ui-tooling-preview")
 
-    // Xposed (compileOnly：运行时由 LSPosed 提供)
+    // Xposed（compileOnly：运行时由 LSPosed 提供）
     compileOnly("io.github.libxposed:api:102.0.0")
 
     // DexKit：运行时定位 OPPO 健康内部实现
