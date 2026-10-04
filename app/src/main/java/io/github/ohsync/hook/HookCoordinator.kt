@@ -42,9 +42,8 @@ class HookCoordinator(private val xposed: XposedInterface) {
             startPeriodicSync()
         }
 
-        // 兜底：路 A 错过首次开库时，从 AppDatabase.INSTANCE 反射取
-        runCatching { dbAccess.tryReflectionFallback(cl) }
-            .onFailure { Log.e(TAG, "反射兜底失败", it) }
+        // 兜底：路 A 错过首次开库时，反复重试从 AppDatabase.INSTANCE 反射取
+        dbAccess.startFallbackLoop(cl)
     }
 
     /**

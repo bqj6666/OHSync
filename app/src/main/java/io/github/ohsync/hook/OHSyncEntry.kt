@@ -63,8 +63,8 @@ internal fun XposedInterface.observeHook(exec: Executable, id: String, block: (L
 /**
  * 捕获方法**返回值**的 hook。
  *
- * 与 observeHook 的区别：observeHook 只能看入参，看不到返回的 db 实例，
- * 而我们要的正是 SupportSQLiteDatabase 返回值本身。
+ * 与 observeHook 的区别：observeHook 只能看入参，看不到返回的数据库实例，
+ * 而我们要的正是那个返回值本身。
  */
 internal fun XposedInterface.captureReturn(exec: Executable, id: String, onReturn: (Any?) -> Unit) {
     try {
