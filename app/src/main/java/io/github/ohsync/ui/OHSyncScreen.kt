@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.PermissionController
 import android.util.Log
+import io.github.ohsync.core.HcAuthIntent
 import io.github.ohsync.core.HcClient
 import io.github.ohsync.core.RecordType
 import io.github.ohsync.core.Settings
@@ -72,22 +73,15 @@ fun OHSyncScreen() {
      * HealthPermissionsRequestAppContract（反编译确认），不是猜的。
      */
     fun openHcAuth() {
-        val direct = android.content.Intent(HC_ACTION_REQUEST_PERMISSIONS).apply {
-            putParcelableArrayListExtra(
-                HC_EXTRA_PERMISSIONS,
-                ArrayList(required),
-            )
-            component = android.content.ComponentName(
-                HC_CONTROLLER_PACKAGE,
-                "$HC_CONTROLLER_PACKAGE.permissions.request.PermissionsActivity",
-            )
-            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        val started = runCatching { ctx.startActivity(direct) }
+        val started = runCatching { ctx.startActivity(HcAuthIntent.forPermissions(required)) }
             .onFailure { Log.w("OHSync", "显式打开 HC 授权页失败，退回官方契约", it) }
             .isSuccess
         if (!started) permissionLauncher.launch(required)
     }
+
+    var interval by remember { mutableIntStateOf(Settings.intervalMinutes(ctx)) }
+    var window by remember { mutableIntStateOf(Settings.windowDays(ctx)) }
+    var showLogs by remember { mutableStateOf(false) }
 
     // 每次进入页面都重新核对一次权限（用户可能在 Health Connect 里改过）
     LaunchedEffect(Unit) { SyncEngine.notePermission(hc.isWriteGranted()) }
@@ -327,8 +321,3 @@ private fun LogCard(expanded: Boolean, logs: List<String>, onToggle: () -> Unit)
         }
     }
 }
-
-/** Health Connect 授权 Intent 的契约常量（取自 connect-client 1.1.0）。 */
-private const val HC_CONTROLLER_PACKAGE = "com.android.healthconnect.controller"
-private const val HC_ACTION_REQUEST_PERMISSIONS = "androidx.health.ACTION_REQUEST_PERMISSIONS"
-private const val HC_EXTRA_PERMISSIONS = "requested_permissions_string"
