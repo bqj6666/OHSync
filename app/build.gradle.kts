@@ -64,7 +64,4 @@ dependencies {
 
     // Xposed（compileOnly：运行时由 LSPosed 提供）
     compileOnly("io.github.libxposed:api:102.0.0")
-
-    // DexKit：运行时定位 OPPO 健康内部实现
-    implementation("org.luckypray:dexkit:2.3.0")
 }

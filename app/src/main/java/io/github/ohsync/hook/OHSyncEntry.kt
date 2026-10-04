@@ -18,11 +18,17 @@ class OHSyncEntry : XposedModule(), XposedModuleInterface {
 
     private val coordinator = HookCoordinator(this)
 
+    /** 阶段一：App 创建之前只装 hook，赶在 OPPO 自己开库之前。 */
+    override fun onPackageLoaded(param: XposedModuleInterface.PackageLoadedParam) {
+        if (param.packageName != TARGET_PACKAGE) return
+        coordinator.onPackageLoaded(param.defaultClassLoader)
+    }
+
     override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
         // 作用域已由 module.prop 的 staticScope + scope.list 限定，这里再挡一道，
         // 防止用户手动改作用域把模块塞进别的 App。
         if (param.packageName != TARGET_PACKAGE) return
-        Log.i(TAG, "injected into ${param.packageName}")
+        Log.i(TAG, "package ready: ${param.packageName}")
         coordinator.onPackageReady(param.classLoader)
     }
 
