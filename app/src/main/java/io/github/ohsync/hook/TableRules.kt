@@ -47,6 +47,11 @@ internal object TableRules {
         "dbexerciseintensity" to RecordType.EXERCISE_INTENSITY,
         "dbexerciseload" to RecordType.EXERCISE_LOAD,
         "dbsnorefeature" to RecordType.SNORE_FEATURE,
+        // 步数日汇总表与明细表（列名实测：total_steps / start_time）
+        "dbsportdatastat" to RecordType.STEPS,
+        "dbsportdatadetail" to RecordType.STEPS,
+        // 体重体脂（实测列：weight / body_fat_rate / height / measurement_timestamp）
+        "dbweightbodyfattable" to RecordType.WEIGHT,
     )
 
     private val ORDERED: List<Pair<String, RecordType>> = listOf(
