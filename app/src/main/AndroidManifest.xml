@@ -57,6 +57,18 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!--
+              Health Connect 授权流程的**必需**声明：它会在弹出授权页之前先跳到
+              应用自己的「用途说明」页面。缺了这段，HC 的 PermissionsActivity 会直接
+              抛 "App should support rationale intent, finishing!" 然后秒退 ——
+              表现就是点「去授权」毫无反应、且应用详情里也没法重新授权。
+              主页本身就是权限说明，所以复用 MainActivity 即可。
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
         </activity>
 
         <!-- Hook 进程把读取到的数据推给主进程；token 校验，不用自定义权限
