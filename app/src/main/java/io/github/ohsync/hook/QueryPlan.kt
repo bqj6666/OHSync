@@ -127,19 +127,27 @@ internal object QueryPlan {
     /** DBHeartRate：一次测量一行，值即 bpm。 */
     private fun heartRateSpec(table: String, cols: Set<String>): TableSpec? {
         if ("heart_rate_value" !in cols || "data_created_timestamp" !in cols) return null
-        val sql = "SELECT _id, data_created_timestamp, heart_rate_value FROM $table " +
+        val hasType = "heart_rate_type" in cols
+        val typeCol = if (hasType) ", heart_rate_type" else ""
+        val hasDev = "device_unique_id" in cols
+        val devCol = if (hasDev) ", device_unique_id" else ""
+        val sql = "SELECT data_created_timestamp, heart_rate_value$typeCol$devCol FROM $table " +
             "WHERE heart_rate_value > 0 AND data_created_timestamp >= $since " +
             "ORDER BY data_created_timestamp DESC LIMIT $PER_SPEC_LIMIT"
         return TableSpec(RecordType.HEART_RATE, sql) { r ->
-            val id = r["_id"] ?: return@TableSpec null
             val ts = r["data_created_timestamp"]?.toLongOrNull() ?: return@TableSpec null
             val bpm = r["heart_rate_value"]?.toDoubleOrNull() ?: return@TableSpec null
+            // 不能用 _id：实测这张表里大量行的 _id 为 0，会全部挤到同一条记录上。
+            // 主键是 (ssoid, device_unique_id, data_created_timestamp, heart_rate_type)，
+            // 所以用时间戳 + 类型唯一标识一次测量。
+            val hrType = r["heart_rate_type"] ?: "0"
+            val dev = r["device_unique_id"] ?: "-"
             if (ts <= 0L || bpm <= 0.0) {
                 null
             } else {
                 SyncRecord(
                     type = RecordType.HEART_RATE.id,
-                    sourceKey = "$table:$id",
+                    sourceKey = "$table:$ts:$hrType:$dev",
                     startTime = ts,
                     endTime = ts,
                     values = mapOf(
@@ -183,11 +191,14 @@ internal object QueryPlan {
     private fun bloodOxygenSpec(table: String, cols: Set<String>): TableSpec? {
         val valueCol = "blood_oxygen_saturation_value"
         if (valueCol !in cols || "data_created_timestamp" !in cols) return null
-        val sql = "SELECT _id, data_created_timestamp, $valueCol FROM $table " +
+        val hasType = "blood_oxygen_saturation_type" in cols
+        val typeCol = if (hasType) ", blood_oxygen_saturation_type" else ""
+        val hasDev = "device_unique_id" in cols
+        val devCol = if (hasDev) ", device_unique_id" else ""
+        val sql = "SELECT data_created_timestamp, $valueCol$typeCol$devCol FROM $table " +
             "WHERE $valueCol > 0 AND data_created_timestamp >= $since " +
             "ORDER BY data_created_timestamp DESC LIMIT $PER_SPEC_LIMIT"
         return TableSpec(RecordType.BLOOD_OXYGEN, sql) { r ->
-            val id = r["_id"] ?: return@TableSpec null
             val ts = r["data_created_timestamp"]?.toLongOrNull() ?: return@TableSpec null
             val v = r[valueCol]?.toDoubleOrNull() ?: return@TableSpec null
             // 读数越界的直接丢弃，不往 HC 里写脏数据
@@ -196,7 +207,8 @@ internal object QueryPlan {
             } else {
                 SyncRecord(
                     type = RecordType.BLOOD_OXYGEN.id,
-                    sourceKey = "$table:$id",
+                    // 同心率：_id 不可靠，用时间戳 + 类型
+                    sourceKey = "$table:$ts:${r["blood_oxygen_saturation_type"] ?: "0"}:${r["device_unique_id"] ?: "-"}",
                     startTime = ts,
                     endTime = ts,
                     values = mapOf(RecordMapper.V_PERCENT to v),
