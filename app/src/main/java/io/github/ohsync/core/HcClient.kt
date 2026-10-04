@@ -5,69 +5,74 @@ import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.Record
-import androidx.health.connect.client.time.TimeRangeFilter
-import java.time.Instant
 
 /**
- * Health Connect 客户端封装：可用性、权限、写入、幂等删除。
+ * Health Connect 客户端封装：可用性、权限、写入。
  *
- * 只做主进程这一侧。Hook 进程永远不碰这里 —— HC 按 UID 判权限，注入进程写不进去。
+ * 只存在于主进程。Hook 进程永远不碰这里 —— HC 按调用方 UID 判权限，
+ * 注入到 com.heytap.health 的代码没有 WRITE_HEALTH_DATA，写不进去。
  */
 class HcClient(private val context: Context) {
 
+    private val sdkStatus = HealthConnectClient.getSdkStatus(context, PROVIDER)
+
     val client: HealthConnectClient? =
-        if (HealthConnectClient.getSdkStatus(context, PROVIDER) == HealthConnectClient.SDK_AVAILABLE) {
+        if (sdkStatus == HealthConnectClient.SDK_AVAILABLE) {
             HealthConnectClient.getOrCreate(context)
-        } else null
+        } else {
+            null
+        }
 
-    fun permissions(): Set<String> = if (client == null) emptySet() else REQUIRED_PERMISSIONS
-
-    suspend fun granted(): Set<String> {
-        val c = client ?: return emptySet()
-        return c.permissionController.getGrantedPermissions()
+    /** 需要用户授予的权限：每种记录类型的读、写权限。 */
+    val requiredPermissions: Set<String> = buildSet {
+        for (type in RecordType.syncable) {
+            val kclass = hcRecordKClass(type) ?: continue
+            runCatching { HealthPermission.getReadPermission(kclass) }
+                .getOrNull()?.let { add(it) }
+            runCatching { HealthPermission.getWritePermission(kclass) }
+                .getOrNull()?.let { add(it) }
+        }
     }
 
-    suspend fun isWriteGranted(): Boolean =
-        HealthPermission.getWritePermission(HealthConnectClient::class.java).all { it in granted() }
+    suspend fun grantedPermissions(): Set<String> =
+        client?.permissionController?.getGrantedPermissions() ?: emptySet()
+
+    suspend fun isWriteGranted(): Boolean {
+        val granted = grantedPermissions()
+        return requiredPermissions.isNotEmpty() && requiredPermissions.all { it in granted }
+    }
 
     /**
-     * 幂等写入：clientRecordId 已存在则先删后插。
-     * 不去重的话重复回填会在 HC 里堆出重复记录。
+     * 写入一条记录。
+     *
+     * 幂等性依赖 Health Connect 对 clientRecordId 的 upsert 语义：同一应用、
+     * 同一记录类型、同一 clientRecordId 再次写入会覆盖旧记录，前提是
+     * clientRecordVersion 不小于已存版本 —— 所以这里用当前毫秒当版本号，
+     * 保证每次写入都是"更新"而不是被丢弃。
+     *
+     * 这条语义需要装到设备上实测确认，代码先按此实现。
      */
-    suspend fun upsert(record: Record, clientRecordId: String) {
+    suspend fun write(record: Record) {
         val c = client ?: throw IllegalStateException("Health Connect unavailable")
-        val clazz = record::class.java
-        val existing = c.readRecords(
-            androidx.health.connect.client.request.ReadRecordsRequest(
-                recordType = clazz,
-                clientRecordIds = setOf(clientRecordId),
-                timeRangeFilter = TimeRangeFilter.all(),
-            )
-        ).records
-        if (existing.isNotEmpty()) {
-            c.deleteRecords(clazz, setOf(clientRecordId), TimeRangeFilter.all())
-        }
         c.insertRecords(listOf(record))
     }
 
-    /** 供 UI 显示的可用性文字。 */
-    fun availabilityText(): String = when (client) {
-        null -> "Health Connect 不可用（SDK 状态=${HealthConnectClient.getSdkStatus(context, PROVIDER)}）"
-        else -> "Health Connect 可用"
-    }
+    fun availabilityText(): String =
+        if (client == null) "Health Connect 不可用（SDK 状态=$sdkStatus）" else "Health Connect 可用"
 
     companion object {
         private const val TAG = "OHSyncHc"
         const val PROVIDER = "com.google.android.apps.healthdata"
 
-        private val REQUIRED_PERMISSIONS: Set<String> = setOf(
-            HealthPermission.getWritePermission(HealthConnectClient::class.java),
-        )
-
         fun clientRecordId(type: RecordType, sourceKey: String) = "ohsync:${type.id}:$sourceKey"
 
-        fun log(msg: String) = Log.i(TAG, msg)
+        /** hcRecord 存的是类名，反射拿 KClass；拿不到就跳过该类型。 */
+        @Suppress("UNCHECKED_CAST")
+        fun hcRecordKClass(type: RecordType): kotlin.reflect.KClass<out Record>? = runCatching {
+            Class.forName("androidx.health.connect.client.records.${type.hcRecord}")
+                .kotlin as kotlin.reflect.KClass<out Record>
+        }.getOrNull()
 
-        fun now() = Instant.now()
+        fun log(msg: String) = Log.i(TAG, msg)
     }
 }

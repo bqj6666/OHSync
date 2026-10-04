@@ -50,7 +50,7 @@ object SyncEngine {
         for (r in batch.records) {
             try {
                 if (r.recordType.hcRecord == null) { skipped++; continue }
-                client.upsert(RecordMapper.map(r), HcClient.clientRecordId(r.recordType, r.sourceKey))
+                client.write(RecordMapper.map(r))
                 ok++
             } catch (t: Throwable) {
                 failed++

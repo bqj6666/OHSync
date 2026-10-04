@@ -48,6 +48,8 @@ android {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.16.0")
+    // Hook 侧复用目标进程已打开的 SupportSQLiteDatabase 实例所需
+    implementation("androidx.sqlite:sqlite:2.5.2")
     implementation("androidx.activity:activity-compose:1.9.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

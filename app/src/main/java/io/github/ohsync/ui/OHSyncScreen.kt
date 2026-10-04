@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -41,6 +42,7 @@ import java.time.format.DateTimeFormatter
 private val TIME_FMT: DateTimeFormatter =
     DateTimeFormatter.ofPattern("MM-dd HH:mm:ss").withZone(ZoneId.systemDefault())
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OHSyncScreen(token: String) {
     val ctx = LocalContext.current
@@ -77,10 +79,10 @@ fun OHSyncScreen(token: String) {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("操作", style = MaterialTheme.typography.titleMedium)
-                        Button(Modifier.fillMaxWidth(), onClick = { SyncEngine.requestBackfill() }) {
+                        Button(onClick = { SyncEngine.requestBackfill() }, modifier = Modifier.fillMaxWidth()) {
                             Text("同步历史数据")
                         }
-                        OutlinedButton(Modifier.fillMaxWidth(), onClick = { copyToken(ctx, token) }) {
+                        OutlinedButton(onClick = { copyToken(ctx, token) }, modifier = Modifier.fillMaxWidth()) {
                             Text("复制配对口令")
                         }
                     }

@@ -6,6 +6,7 @@ import androidx.health.connect.client.records.BloodPressureRecord
 import androidx.health.connect.client.records.BodyFatRecord
 import androidx.health.connect.client.records.DistanceRecord
 import androidx.health.connect.client.records.ElevationGainedRecord
+import androidx.health.connect.client.feature.ExperimentalMindfulnessSessionApi
 import androidx.health.connect.client.records.FloorsClimbedRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
@@ -41,6 +42,7 @@ import java.time.ZoneOffset
  * 不认识的类型、缺关键字段 -> 抛异常，由 SyncEngine 计入失败并跳过，
  * 绝不静默把错数据写进 HC。
  */
+@OptIn(ExperimentalMindfulnessSessionApi::class)
 object RecordMapper {
     const val V_COUNT = "count"
     const val V_DISTANCE_M = "distance_m"
@@ -58,8 +60,19 @@ object RecordMapper {
     private val ORIGIN = DataOrigin("io.github.ohsync")
     private val DEVICE = Device(Device.TYPE_PHONE, null, null)
 
-    fun metadata(clientRecordId: String): Metadata =
-        Metadata.autoRecordedWithId(clientRecordId, DEVICE).copy(dataOrigin = ORIGIN)
+    /**
+     * Metadata.autoRecordedWithId 会把 dataOrigin 固定成包名，不给改；
+     * 而 DataOrigin 构造函数是 public 的，所以直接用主构造器传自己想要的 origin。
+     */
+    fun metadata(clientRecordId: String): Metadata = Metadata(
+        recordingMethod = Metadata.RECORDING_METHOD_AUTOMATICALLY_RECORDED,
+        id = clientRecordId,
+        dataOrigin = ORIGIN,
+        lastModifiedTime = Instant.now(),
+        clientRecordId = clientRecordId,
+        clientRecordVersion = System.currentTimeMillis(),
+        device = DEVICE,
+    )
 
     fun map(r: SyncRecord): Record {
         val start = Instant.ofEpochMilli(r.startTime)
@@ -81,7 +94,7 @@ object RecordMapper {
                 start, zo, end, zo, Energy.kilocalories(r.double(V_CALORIES)), metadata(cid))
 
             RecordType.HEART_RATE -> HeartRateRecord(
-                start, zo, end, zo, r.samples().map { HeartRateRecord.Sample(it.bpm, it.at) },
+                start, zo, end, zo, r.samples().map { HeartRateRecord.Sample(it.first, it.second) },
                 metadata(cid))
 
             RecordType.RESTING_HEART_RATE -> RestingHeartRateRecord(
