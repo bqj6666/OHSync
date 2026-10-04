@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -23,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,6 +33,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.health.connect.client.PermissionController
+import io.github.ohsync.core.HcClient
 import io.github.ohsync.core.RecordType
 import io.github.ohsync.core.SyncEngine
 import io.github.ohsync.core.TokenStore
@@ -49,6 +53,18 @@ fun OHSyncScreen(token: String) {
     val scope = rememberCoroutineScope()
     val status by SyncEngine.status.collectAsState()
     val logs by SyncEngine.logs.collectAsState()
+
+    // Health Connect 需要用户显式授权；没授权的话写不进去任何记录
+    val hc = remember { HcClient(ctx) }
+    val required = remember(hc) { hc.requiredPermissions }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        PermissionController.createRequestPermissionResultContract()
+    ) { granted ->
+        SyncEngine.notePermission(granted.containsAll(required))
+    }
+    LaunchedEffect(Unit) {
+        SyncEngine.notePermission(hc.isWriteGranted())
+    }
 
     Scaffold(topBar = { TopAppBar(title = { Text("OHSync") }) }) { pad ->
         LazyColumn(
@@ -79,6 +95,12 @@ fun OHSyncScreen(token: String) {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("操作", style = MaterialTheme.typography.titleMedium)
+                        Button(
+                            onClick = { permissionLauncher.launch(required) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("授予 Health Connect 权限")
+                        }
                         Button(onClick = { SyncEngine.requestBackfill() }, modifier = Modifier.fillMaxWidth()) {
                             Text("同步历史数据")
                         }
