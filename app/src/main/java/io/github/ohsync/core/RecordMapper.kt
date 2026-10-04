@@ -20,7 +20,6 @@ import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.records.WeightRecord
-import androidx.health.connect.client.records.metadata.DataOrigin
 import androidx.health.connect.client.records.metadata.Device
 import androidx.health.connect.client.records.metadata.Metadata
 import androidx.health.connect.client.units.Energy
@@ -57,22 +56,14 @@ object RecordMapper {
     const val V_FLOORS = "floors"
     const val V_BMR = "bmr"
 
-    private val ORIGIN = DataOrigin("io.github.ohsync")
     private val DEVICE = Device(Device.TYPE_PHONE, null, null)
 
     /**
-     * Metadata.autoRecordedWithId 会把 dataOrigin 固定成包名，不给改；
-     * 而 DataOrigin 构造函数是 public 的，所以直接用主构造器传自己想要的 origin。
+     * Metadata 的主构造器在 HC 1.1.0 里是 internal，外部只能用 Companion 的工厂方法。
+     * dataOrigin 本来就由 Health Connect 按调用方包名自动填，不需要（也改不了）。
      */
-    fun metadata(clientRecordId: String): Metadata = Metadata(
-        recordingMethod = Metadata.RECORDING_METHOD_AUTOMATICALLY_RECORDED,
-        id = clientRecordId,
-        dataOrigin = ORIGIN,
-        lastModifiedTime = Instant.now(),
-        clientRecordId = clientRecordId,
-        clientRecordVersion = System.currentTimeMillis(),
-        device = DEVICE,
-    )
+    fun metadata(clientRecordId: String): Metadata =
+        Metadata.autoRecordedWithId(clientRecordId, DEVICE)
 
     fun map(r: SyncRecord): Record {
         val start = Instant.ofEpochMilli(r.startTime)
@@ -94,7 +85,7 @@ object RecordMapper {
                 start, zo, end, zo, Energy.kilocalories(r.double(V_CALORIES)), metadata(cid))
 
             RecordType.HEART_RATE -> HeartRateRecord(
-                start, zo, end, zo, r.samples().map { HeartRateRecord.Sample(it.first, it.second) },
+                start, zo, end, zo, r.samples().map { HeartRateRecord.Sample(it.second, it.first.toLong()) },
                 metadata(cid))
 
             RecordType.RESTING_HEART_RATE -> RestingHeartRateRecord(
