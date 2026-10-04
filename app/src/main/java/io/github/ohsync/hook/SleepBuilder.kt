@@ -41,11 +41,17 @@ object SleepBuilder {
         4 to SleepSessionRecord.STAGE_TYPE_LIGHT,
     )
 
-    fun build(reader: TableReader, incremental: Boolean = false): List<SyncRecord> {
+    /**
+     * 拼出睡眠会话。
+     *
+     * 刻意**不**做增量：一次会话由很多条分段拼成，若只读上次同步之后的片段，
+     * 跨界那一晚会被截断，会话起始时间随之改变、sourceKey 也就变了，
+     * 结果是同一晚在 Health Connect 里越滚越多条（实测从 90 涨到 359）。
+     * 睡眠分段总量很小（三个月约 3000 条），每次全量重拼代价可忽略。
+     */
+    fun build(reader: TableReader): List<SyncRecord> {
         if (reader.tableNames().none { it == TABLE }) return emptyList()
-        val windowStart = System.currentTimeMillis() - windowDays * 86_400_000L
-        val last = if (incremental) RemoteConfig.fetch()?.lastSyncAt ?: 0L else 0L
-        val since = if (last > 0L) maxOf(windowStart, last - 120_000L) else windowStart
+        val since = System.currentTimeMillis() - windowDays * 86_400_000L
         val rows = reader.query(
             "SELECT start_timestamp, end_timestamp, type FROM $TABLE " +
                 "WHERE end_timestamp > start_timestamp AND start_timestamp >= $since " +

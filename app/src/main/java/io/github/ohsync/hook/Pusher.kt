@@ -27,7 +27,7 @@ object Pusher {
         var total = 0
 
         // 睡眠是多行拼一条记录，走独立路径
-        val sleep = SleepBuilder.build(reader, incremental)
+        val sleep = SleepBuilder.build(reader)
         if (sleep.isNotEmpty()) {
             send(RecordType.SLEEP_SESSION.id, sleep)
             total += sleep.size
