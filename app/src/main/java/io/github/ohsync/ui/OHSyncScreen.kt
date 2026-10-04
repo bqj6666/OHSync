@@ -1,6 +1,7 @@
 package io.github.ohsync.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,9 +32,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import androidx.health.connect.client.PermissionController
-import android.util.Log
-import io.github.ohsync.core.HcAuthIntent
 import io.github.ohsync.core.HcClient
 import io.github.ohsync.core.RecordType
 import io.github.ohsync.core.Settings
@@ -54,30 +52,32 @@ fun OHSyncScreen() {
 
     val hc = remember { HcClient(ctx) }
     val required = remember(hc) { hc.requiredPermissions }
-    // 首选：Health Connect 官方授权契约
+    /**
+     * 权限请求用**标准**的多权限契约，不用 Health Connect 客户端库的
+     * PermissionController.createRequestPermissionResultContract()。
+     *
+     * 原因（反编译 connect-client 1.1.0 确认）：
+     *   客户端库有两套契约 ——
+     *     permission.HealthPermissionsRequestAppContract      -> 自定义 action，给 HC 独立 APK 用
+     *     permission.platform.HealthPermissionsRequestModuleContract -> 直接复用
+     *                                              ActivityResultContracts.RequestMultiplePermissions
+     *   本机的 Health Connect 是系统模块，走的是后者，也就是标准权限请求。
+     *   用前者的话，Intent 会被 ColorOS 的权限界面接走后立刻返回、什么都不做（实测）。
+     */
     val permissionLauncher = rememberLauncherForActivityResult(
-        PermissionController.createRequestPermissionResultContract()
-    ) { granted -> SyncEngine.notePermission(granted.containsAll(required)) }
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        SyncEngine.notePermission(result.isNotEmpty() && result.values.all { it })
+    }
 
     /**
-     * 打开 Health Connect 的授权界面。
+     * 弹出系统授权对话框，逐条勾选要授予的健康数据类型。
      *
-     * 不用官方契约 PermissionController.createRequestPermissionResultContract()：
-     * 它发的是隐式 Intent（action=androidx.health.ACTION_REQUEST_PERMISSIONS，
-     * 只 setPackage），ColorOS 的设置页抢注了这个 action，被它接走后立刻返回、
-     * 什么也不做（实测 Android 16 + ColorOS）。更糟的是应用详情里那一行也只在
-     * 「至少已授权一项」时才显示 —— 用户一旦全部关掉，设置页里就没有再打开的入口了。
-     *
-     * 所以这里自己构造 Intent 并**显式指定组件**，绕开设置页的拦截，直达 HC 的授权页。
-     * action 与 extra 名取自 androidx.health.connect:connect-client:1.1.0 的
-     * HealthPermissionsRequestAppContract（反编译确认），不是猜的。
+     * 注意这个按钮是必需的：ColorOS 的应用详情页只在「至少已授权一项」时才显示
+     * 健康权限那一行 —— 用户一旦把权限全部关掉，设置里就再也没有入口了。
+     * 所以应用必须自己能重新发起授权。
      */
-    fun openHcAuth() {
-        val started = runCatching { ctx.startActivity(HcAuthIntent.forPermissions(required)) }
-            .onFailure { Log.w("OHSync", "显式打开 HC 授权页失败，退回官方契约", it) }
-            .isSuccess
-        if (!started) permissionLauncher.launch(required)
-    }
+    fun openHcAuth() = permissionLauncher.launch(required.toTypedArray())
 
     var interval by remember { mutableIntStateOf(Settings.intervalMinutes(ctx)) }
     var window by remember { mutableIntStateOf(Settings.windowDays(ctx)) }
