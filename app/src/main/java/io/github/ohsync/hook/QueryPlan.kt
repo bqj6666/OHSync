@@ -41,9 +41,27 @@ internal object QueryPlan {
      * clientRecordId 幂等，下次周期推送会把更早的慢慢补齐。
      */
     private const val PER_SPEC_LIMIT = 3000
-    private val since: Long get() = System.currentTimeMillis() - windowDays * 86_400_000L
+    /** 由 forTables 在每次调用时设置，代表本次要读的时间下界。 */
+    @Volatile private var lowerBound: Long = 0L
 
-    fun forTables(reader: TableReader): List<TableSpec> {
+    private fun computeSince(incremental: Boolean): Long {
+        val windowStart = System.currentTimeMillis() - windowDays * 86_400_000L
+        if (!incremental) return windowStart
+        val last = RemoteConfig.fetch()?.lastSyncAt ?: 0L
+        // 上次同步点无效（首次运行）时退化为完整窗口
+        if (last <= 0L) return windowStart
+        // 留 2 分钟重叠，避免边界上的记录被漏掉；clientRecordId 幂等，重复写不会脏
+        return maxOf(windowStart, last - 120_000L)
+    }
+
+    private val since: Long get() = lowerBound
+
+    /**
+     * @param incremental true 表示只取上次同步之后的新数据（周期推送走这条），
+     *                    false 表示取完整时间窗口（用户手动「立即同步」走这条）。
+     */
+    fun forTables(reader: TableReader, incremental: Boolean = false): List<TableSpec> {
+        lowerBound = computeSince(incremental)
         val out = ArrayList<TableSpec>()
         for (table in reader.tableNames()) {
             val cols = reader.columns(table)

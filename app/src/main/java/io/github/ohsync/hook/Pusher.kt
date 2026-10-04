@@ -18,8 +18,8 @@ object Pusher {
     private const val OHSYNC_PACKAGE = "io.github.ohsync"
     private const val PROVIDER_SUFFIX = ".sync"
 
-    fun push(reader: TableReader) {
-        val specs = QueryPlan.forTables(reader)
+    fun push(reader: TableReader, incremental: Boolean = false) {
+        val specs = QueryPlan.forTables(reader, incremental)
         if (specs.isEmpty()) {
             Log.w(TAG, "没有找到可同步的表（结构可能已变）")
             return
@@ -27,7 +27,7 @@ object Pusher {
         var total = 0
 
         // 睡眠是多行拼一条记录，走独立路径
-        val sleep = SleepBuilder.build(reader)
+        val sleep = SleepBuilder.build(reader, incremental)
         if (sleep.isNotEmpty()) {
             send(RecordType.SLEEP_SESSION.id, sleep)
             total += sleep.size
@@ -41,7 +41,9 @@ object Pusher {
             total += records.size
             Log.i(TAG, "${spec.type.label}：${records.size} 条")
         }
-        Log.i(TAG, "推送完成，共 $total 条")
+        Log.i(TAG, "推送完成，共 $total 条${if (incremental) "（增量）" else "（全窗口）"}")
+        // 汇报本次完成时间：下次增量只取这之后的数据
+        RemoteConfig.reportSyncDone(System.currentTimeMillis())
     }
 
     private fun send(type: String, records: List<SyncRecord>) {

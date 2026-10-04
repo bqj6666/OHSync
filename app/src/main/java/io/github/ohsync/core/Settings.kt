@@ -13,6 +13,7 @@ object Settings {
     private const val PREFS = "ohsync_settings"
     private const val KEY_INTERVAL = "sync_interval_minutes"
     private const val KEY_WINDOW = "window_days"
+    private const val KEY_LAST_SYNC = "last_incremental_sync_at"
 
     /** 同步间隔选项。0 表示只在手动点「立即同步」时才推。 */
     val INTERVAL_OPTIONS: List<Pair<Int, String>> = listOf(
@@ -60,6 +61,19 @@ object Settings {
     fun windowLabel(context: Context): String =
         WINDOW_OPTIONS.firstOrNull { it.first == windowDays(context) }?.second
             ?: "最近 ${windowDays(context)} 天"
+
+    /**
+     * 上次增量同步的时间点。
+     *
+     * 周期推送只取这个时间之后的数据 —— 否则每小时都要把整个窗口
+     * （1.5 万条量级）重读重写一遍，纯属浪费。
+     */
+    fun lastSyncAt(context: Context): Long =
+        prefs(context).getLong(KEY_LAST_SYNC, 0L)
+
+    fun setLastSyncAt(context: Context, at: Long) {
+        prefs(context).edit().putLong(KEY_LAST_SYNC, at).apply()
+    }
 
     /** 默认 1 小时：够及时，也不至于反复扫库。 */
     const val DEFAULT_INTERVAL = 60

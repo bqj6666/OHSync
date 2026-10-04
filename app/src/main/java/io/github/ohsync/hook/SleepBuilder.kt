@@ -41,9 +41,11 @@ object SleepBuilder {
         4 to SleepSessionRecord.STAGE_TYPE_LIGHT,
     )
 
-    fun build(reader: TableReader): List<SyncRecord> {
+    fun build(reader: TableReader, incremental: Boolean = false): List<SyncRecord> {
         if (reader.tableNames().none { it == TABLE }) return emptyList()
-        val since = System.currentTimeMillis() - windowDays * 86_400_000L
+        val windowStart = System.currentTimeMillis() - windowDays * 86_400_000L
+        val last = if (incremental) RemoteConfig.fetch()?.lastSyncAt ?: 0L else 0L
+        val since = if (last > 0L) maxOf(windowStart, last - 120_000L) else windowStart
         val rows = reader.query(
             "SELECT start_timestamp, end_timestamp, type FROM $TABLE " +
                 "WHERE end_timestamp > start_timestamp AND start_timestamp >= $since " +

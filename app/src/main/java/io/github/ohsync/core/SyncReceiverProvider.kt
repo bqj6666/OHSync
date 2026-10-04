@@ -81,9 +81,12 @@ class SyncReceiverProvider : ContentProvider() {
                     putInt("intervalMinutes", Settings.intervalMinutes(c))
                     putInt("windowDays", Settings.windowDays(c))
                     putBoolean("backfillRequested", engine.pendingBackfill())
+                    putLong("lastSyncAt", Settings.lastSyncAt(c))
                 }
                 // Hook 侧完成一次手动同步后回报，避免重复触发
                 "backfillDone" -> engine.clearBackfillRequest()
+                // Hook 侧完成一次增量推送后回报时间点，下次只取这之后的数据
+                "syncDone" -> extras?.getLong("at")?.let { Settings.setLastSyncAt(requireNotNull(context), it) }
                 "requestBackfill" -> engine.requestBackfill()
                 else -> Unit
             }

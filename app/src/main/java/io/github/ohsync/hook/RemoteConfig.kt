@@ -9,6 +9,7 @@ data class HookConfig(
     val intervalMinutes: Int,
     val windowDays: Int,
     val backfillRequested: Boolean,
+    val lastSyncAt: Long,
 )
 
 /**
@@ -48,6 +49,7 @@ object RemoteConfig {
                     intervalMinutes = b.getInt("intervalMinutes", 60),
                     windowDays = b.getInt("windowDays", 90),
                     backfillRequested = b.getBoolean("backfillRequested", false),
+                    lastSyncAt = b.getLong("lastSyncAt", 0L),
                 )
             }
         } catch (t: Throwable) {
@@ -60,6 +62,19 @@ object RemoteConfig {
             TokenHolder.pair(got.token)
         }
         return got ?: cached
+    }
+
+    /** 告诉主进程本次推送完成的时间点，下次增量只取这之后的数据。 */
+    fun reportSyncDone(at: Long) {
+        if (AppContextHolder.context == null) AppContextHolder.init()
+        val ctx = AppContextHolder.context ?: return
+        runCatching {
+            ctx.contentResolver.call(
+                Uri.parse("content://$OHSYNC_PACKAGE$PROVIDER_SUFFIX"),
+                "syncDone", null,
+                android.os.Bundle().apply { putLong("at", at) },
+            )
+        }
     }
 
     /** 告诉主进程「这次手动同步做完了」，避免下一轮又触发。 */

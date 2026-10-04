@@ -38,7 +38,8 @@ class HookCoordinator(private val xposed: XposedInterface) {
             // 首次拿到数据库时推一次；用户设了「仅手动」则不自动推
             if (!pushedOnce && (RemoteConfig.fetch()?.intervalMinutes ?: 60) > 0) {
                 pushedOnce = true
-                pushNow(withProbe = true)
+                // 首次拿库走完整窗口，把历史补上
+                pushNow(withProbe = true, incremental = false)
             }
             startPeriodicSync()
         }
@@ -99,7 +100,7 @@ class HookCoordinator(private val xposed: XposedInterface) {
                             Log.w(TAG, "数据库未就绪，稍后再试")
                             continue
                         }
-                        pushNow(withProbe = manual)
+                        pushNow(withProbe = manual, incremental = !manual)
                         lastPush = System.currentTimeMillis()
                         if (manual) RemoteConfig.reportBackfillDone()
                     }
@@ -118,9 +119,14 @@ class HookCoordinator(private val xposed: XposedInterface) {
     private var periodicStarted = false
 
     /** UI 点「同步历史数据」时也会走这里。 */
-    fun pushFullHistory() = pushNow(withProbe = true)
+    /** 用户点「立即同步」：走完整窗口。 */
+    fun pushFullHistory() = pushNow(withProbe = true, incremental = false)
 
-    private fun pushNow(withProbe: Boolean) {
+    /**
+     * @param withProbe   顺带跑一次证据探针（只在手动同步时，探针输出很啰嗦）
+     * @param incremental 只取上次同步之后的新数据；手动同步传 false 走完整窗口
+     */
+    private fun pushNow(withProbe: Boolean, incremental: Boolean = false) {
         if (!reader.isReady()) {
             Log.w(TAG, "数据库未就绪，跳过推送")
             return
@@ -131,7 +137,7 @@ class HookCoordinator(private val xposed: XposedInterface) {
         Thread {
             runCatching {
                 if (withProbe) Probe.run(reader)
-                Pusher.push(reader)
+                Pusher.push(reader, incremental)
             }.onFailure { Log.e(TAG, "推送失败", it) }
         }.apply { isDaemon = true }.start()
     }
