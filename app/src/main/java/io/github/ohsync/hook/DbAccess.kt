@@ -78,7 +78,7 @@ class DbAccess(private val xposed: XposedInterface) {
      * 做法就是调它自己的入口 AppDatabase.getInstance(Context) —— 幂等、只读用途，
      * 相当于提前把它本来也会做的初始化做掉，不修改任何健康数据。
      */
-    private fun tryTriggerOpen(appDb: Class<?>, classLoader: ClassLoader): Boolean {
+    private fun tryTriggerOpen(appDb: Class<*>): Boolean {
         if (AppContextHolder.context == null) AppContextHolder.init()
         val ctx = AppContextHolder.context ?: return false
         return runCatching {
@@ -107,7 +107,7 @@ class DbAccess(private val xposed: XposedInterface) {
             if (attempt == 1 || attempt % 10 == 1) {
                 Log.i(TAG, "路 B 第 $attempt 次：INSTANCE 为 null，主动触发开库")
             }
-            if (tryTriggerOpen(appDb, classLoader)) {
+            if (tryTriggerOpen(appDb)) {
                 // 触发成功后下一轮就能从 INSTANCE 取到实例
                 Log.i(TAG, "已主动触发 OPPO 数据库初始化")
             }
