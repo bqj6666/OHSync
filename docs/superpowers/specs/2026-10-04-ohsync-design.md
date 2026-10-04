@@ -19,12 +19,10 @@
 
 ## 3. 独立性与项目归属
 
-OHSync 是**独立项目、独立仓库、独立包名**，与 FxxkMoondrop 没有任何代码或发布关系。
-复用的只有工程经验：AGP 9 + Kotlin 2.4 + libxposed 102 + DexKit 2.3 的构建骨架思路、
-DexKit 定位实战的坑位清单、LSPosed 作用域与静态 scope 的写法。
-不复制源码、不引用其依赖坐标、不共用签名、不共用发布流程。
+OHSync 是独立项目、独立仓库、独立包名。除通用第三方依赖（AGP、Kotlin、libxposed、
+DexKit、Compose）之外不依赖任何其他项目，不共用源码、签名或发布流程。
 
-技术分歧点：FxxkMoondrop 用 Miuix 组件库，OHSync 不用，改用 Material 3，界面保持最简。
+UI 组件库选择 Material 3，界面保持最简，不引入第三方 UI 套件。
 
 ## 4. 架构
 

@@ -1,0 +1,81 @@
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
+}
+
+android {
+    namespace = "io.github.ohsync"
+    compileSdk = 37
+
+    defaultConfig {
+        applicationId = "io.github.ohsync"
+        minSdk = 34
+        targetSdk = 36
+        versionCode = 1
+        versionName = "0.1.0"
+    }
+
+    buildTypes {
+        debug {
+            isMinifyEnabled = false
+        }
+        release {
+            isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlin {
+        jvmToolchain(21)
+    }
+
+    buildFeatures {
+        compose = true
+    }
+
+    packaging {
+        resources.excludes += setOf(
+            "META-INF/DEPENDENCIES",
+            "META-INF/LICENSE*",
+            "META-INF/NOTICE*"
+        )
+    }
+
+    sourceSets {
+        getByName("main") {
+            java.srcDirs("src/main/java")
+            resources.srcDirs("src/main/resources")
+        }
+    }
+}
+
+dependencies {
+    implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.activity:activity-compose:1.9.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    // Health Connect 官方客户端
+    implementation("androidx.health.connect:connect-client:1.1.0")
+
+    // Compose + Material 3
+    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+
+    // Xposed (compileOnly：运行时由 LSPosed 提供)
+    compileOnly("io.github.libxposed:api:102.0.0")
+
+    // DexKit：运行时定位 OPPO 健康内部实现
+    implementation("org.luckypray:dexkit:2.3.0")
+}

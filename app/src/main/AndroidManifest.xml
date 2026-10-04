@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 写 Health Connect 所需 -->
+    <uses-permission android:name="android.permission.health.WRITE_HEALTH_DATA" />
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA" />
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.OHSync">
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Hook 进程把读取到的数据推给主进程；token 校验，不用自定义权限
+             （com.heytap.health 是第三方应用，签名级自定义权限无法授予它） -->
+        <provider
+            android:name=".core.SyncReceiverProvider"
+            android:authorities="${applicationId}.sync"
+            android:exported="true"
+            android:grantUriPermissions="false" />
+
+    </application>
+
+    <!-- Health Connect 权限引导页的系统入口 -->
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+    </queries>
+
+</manifest>

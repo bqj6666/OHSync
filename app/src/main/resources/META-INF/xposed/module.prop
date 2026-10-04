@@ -1,0 +1,9 @@
+id=io.github.ohsync
+name=OHSync
+version=0.1.0
+author=ohsync
+homepage=https://github.com/ohsync/ohsync
+description=把 OPPO 健康数据同步到 Health Connect
+minApiVersion=101
+targetApiVersion=102
+staticScope=true
