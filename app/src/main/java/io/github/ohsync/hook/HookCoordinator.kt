@@ -35,7 +35,8 @@ class HookCoordinator(private val xposed: XposedInterface) {
         dbAccess.onDatabaseReady = { db ->
             reader.attach(db)
             reportTables()
-            if (!pushedOnce) {
+            // 首次拿到数据库时推一次；用户设了「仅手动」则不自动推
+            if (!pushedOnce && (RemoteConfig.fetch()?.intervalMinutes ?: 60) > 0) {
                 pushedOnce = true
                 pushNow(withProbe = true)
             }
@@ -68,27 +69,50 @@ class HookCoordinator(private val xposed: XposedInterface) {
     }
 
     /**
-     * 周期性增量推送。
+     * 周期性推送。
      *
-     * Health Connect 没有推送/订阅写入 API，而 OPPO 的写库点又没有稳定的挂钩位置
-     * （它的 DAO 是实现类，名字随版本变；SQLCipher 的连接层挂钩要处理多线程重入）。
-     * 所以实时性用「定时推送 + clientRecordId 幂等覆盖」实现：
-     * 每次推的是全量最新值，重复推送只会覆盖同一条记录，不会产生重复数据。
+     * Health Connect 没有推送/订阅写入 API，OPPO 的写库点也没有稳定的挂钩位置
+     * （DAO 是实现类、名字随版本变；SQLCipher 连接层挂钩要处理多线程重入）。
+     * 所以实时性用「定时推送 + clientRecordId 幂等覆盖」实现：每次推的是权威全量值，
+     * 重复推送只会覆盖同一条记录，不会产生重复数据。
+     *
+     * 间隔由用户在 OHSync 里设置，每轮开始时向主进程取一次；设为「仅手动」则空转等待。
      */
     private fun startPeriodicSync() {
         if (periodicStarted) return
         periodicStarted = true
         Thread {
+            var lastPush = 0L
             while (true) {
                 try {
-                    Thread.sleep(INTERVAL_MS)
-                    if (reader.isReady()) pushNow(withProbe = false)
+                    // 30 秒一轮：轻量地看一眼有没有手动请求；真正的推送按用户设的间隔走
+                    Thread.sleep(30_000L)
+                    val cfg = RemoteConfig.fetch(force = true) ?: continue
+
+                    val manual = cfg.backfillRequested
+                    val minutes = cfg.intervalMinutes
+                    val due = minutes > 0 &&
+                        System.currentTimeMillis() - lastPush >= minutes * 60_000L
+
+                    if (manual || due) {
+                        if (!reader.isReady()) {
+                            Log.w(TAG, "数据库未就绪，稍后再试")
+                            continue
+                        }
+                        pushNow(withProbe = manual)
+                        lastPush = System.currentTimeMillis()
+                        if (manual) RemoteConfig.reportBackfillDone()
+                    }
                 } catch (t: Throwable) {
                     Log.e(TAG, "周期推送异常", t)
+                    try {
+                        Thread.sleep(60_000L)
+                    } catch (_: InterruptedException) {
+                    }
                 }
             }
         }.apply { isDaemon = true }.start()
-        Log.i(TAG, "周期同步已启动，间隔 ${INTERVAL_MS / 1000} 秒")
+        Log.i(TAG, "推送循环已启动（间隔由主进程下发）")
     }
 
     private var periodicStarted = false
@@ -114,6 +138,5 @@ class HookCoordinator(private val xposed: XposedInterface) {
 
     companion object {
         private const val TAG = "OHSyncHook"
-        private const val INTERVAL_MS = 120_000L
     }
 }

@@ -29,9 +29,9 @@ internal object QueryPlan {
 
     private const val TAG = "OHSyncPlan"
 
-    /** 只同步最近这些天，避免一次把几年的分钟级明细全灌进 HC。 */
-    @Suppress("unused")
-    private const val WINDOW_DAYS = 90L
+    /** 时间窗口由用户在 OHSync 里设置，这里取主进程下发的值。 */
+    private val windowDays: Long
+        get() = (RemoteConfig.fetch()?.windowDays ?: 90).toLong()
 
     /**
      * 每种记录单次推送的上限。
@@ -41,7 +41,7 @@ internal object QueryPlan {
      * clientRecordId 幂等，下次周期推送会把更早的慢慢补齐。
      */
     private const val PER_SPEC_LIMIT = 3000
-    private val since: Long get() = System.currentTimeMillis() - WINDOW_DAYS * 86_400_000L
+    private val since: Long get() = System.currentTimeMillis() - windowDays * 86_400_000L
 
     fun forTables(reader: TableReader): List<TableSpec> {
         val out = ArrayList<TableSpec>()

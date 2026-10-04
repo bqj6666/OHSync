@@ -98,6 +98,12 @@ object SyncEngine {
 
     fun pendingBackfill(): Boolean = _backfillRequested.value
 
+    /** Hook 侧完成手动同步后调用。 */
+    fun clearBackfillRequest() {
+        _backfillRequested.value = false
+        _status.value = _status.value.copy(pendingBackfill = false)
+    }
+
     fun syncedCount(): Long = _status.value.syncedCount
 
     fun noteHookSeen() {

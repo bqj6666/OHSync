@@ -70,11 +70,20 @@ class SyncReceiverProvider : ContentProvider() {
             when (method) {
                 // Hook 进程启动时自检：口令对不对
                 "ping" -> putBoolean("ok", arg != null && TokenStore.constantTimeEquals(arg, expected))
-                // Hook 侧取口令。
+                // Hook 侧取配置。
                 //
                 // 为什么让读方来取，而不是让用户手抄：Hook 代码跑在 OPPO 健康进程里，
                 // 那里没有我们自己的 UI，用户没有任何途径把口令粘进去。
-                "token" -> putString("token", expected)
+                // 同步间隔与时间窗口同理，都由主进程持有并在每次轮询时下发。
+                "config" -> {
+                    val c = requireNotNull(context)
+                    putString("token", expected)
+                    putInt("intervalMinutes", Settings.intervalMinutes(c))
+                    putInt("windowDays", Settings.windowDays(c))
+                    putBoolean("backfillRequested", engine.pendingBackfill())
+                }
+                // Hook 侧完成一次手动同步后回报，避免重复触发
+                "backfillDone" -> engine.clearBackfillRequest()
                 "requestBackfill" -> engine.requestBackfill()
                 else -> Unit
             }

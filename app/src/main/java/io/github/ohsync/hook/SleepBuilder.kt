@@ -30,7 +30,9 @@ object SleepBuilder {
     /** 太短的片段不当作一次睡眠。 */
     private const val MIN_SESSION_MS = 10 * 60_000L
 
-    private const val WINDOW_DAYS = 90L
+    /** 时间窗口与其它类型保持一致，取主进程下发的设置。 */
+    private val windowDays: Long
+        get() = (RemoteConfig.fetch()?.windowDays ?: 90).toLong()
 
     private val STAGE_OF_TYPE: Map<Int, Int> = mapOf(
         0 to SleepSessionRecord.STAGE_TYPE_AWAKE,
@@ -41,7 +43,7 @@ object SleepBuilder {
 
     fun build(reader: TableReader): List<SyncRecord> {
         if (reader.tableNames().none { it == TABLE }) return emptyList()
-        val since = System.currentTimeMillis() - WINDOW_DAYS * 86_400_000L
+        val since = System.currentTimeMillis() - windowDays * 86_400_000L
         val rows = reader.query(
             "SELECT start_timestamp, end_timestamp, type FROM $TABLE " +
                 "WHERE end_timestamp > start_timestamp AND start_timestamp >= $since " +
