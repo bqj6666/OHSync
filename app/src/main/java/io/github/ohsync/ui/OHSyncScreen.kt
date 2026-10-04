@@ -147,7 +147,11 @@ private fun StatusCard(status: io.github.ohsync.core.SyncStatus, onSync: () -> U
             }
 
             Text(
-                "上次同步：${status.lastSyncAtMillis?.let { TIME_FMT.format(Instant.ofEpochMilli(it)) } ?: "还没同步过"}",
+                "上次同步：${
+                    status.lastSyncAtMillis
+                        ?.let { TIME_FMT.format(Instant.ofEpochMilli(it)) }
+                        ?: "还没同步过"
+                }",
                 style = MaterialTheme.typography.bodyMedium,
             )
             Text(
@@ -165,8 +169,19 @@ private fun StatusCard(status: io.github.ohsync.core.SyncStatus, onSync: () -> U
                 )
             }
 
-            Button(onClick = onSync, modifier = Modifier.fillMaxWidth()) {
-                Text("立即同步")
+            Button(
+                onClick = onSync,
+                enabled = !status.pendingBackfill,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (status.pendingBackfill) "正在同步…" else "立即同步")
+            }
+            if (status.pendingBackfill) {
+                Text(
+                    "已通知读取端，正在读取并写入，通常几秒内完成。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
         }
     }

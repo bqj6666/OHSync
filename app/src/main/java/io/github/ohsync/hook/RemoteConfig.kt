@@ -77,15 +77,4 @@ object RemoteConfig {
         }
     }
 
-    /** 告诉主进程「这次手动同步做完了」，避免下一轮又触发。 */
-    fun reportBackfillDone() {
-        if (AppContextHolder.context == null) AppContextHolder.init()
-        val ctx = AppContextHolder.context ?: return
-        runCatching {
-            ctx.contentResolver.call(
-                Uri.parse("content://$OHSYNC_PACKAGE$PROVIDER_SUFFIX"),
-                "backfillDone", null, null,
-            )
-        }
-    }
 }

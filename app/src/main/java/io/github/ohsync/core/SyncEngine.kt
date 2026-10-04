@@ -30,7 +30,13 @@ object SyncEngine {
     private val _logs = MutableStateFlow<List<String>>(emptyList())
     val logs: StateFlow<List<String>> = _logs.asStateFlow()
 
-    private val _backfillRequested = MutableStateFlow(true)
+    /**
+     * 是否已请求手动同步、但还没看到推送结果。
+     *
+     * 初始 false：UI 一进来不该显示「正在同步」。首次拿库时的历史回填由 Hook 侧
+     * 独立判断（它不读这个标志），所以这里不需要为它置位。
+     */
+    private val _backfillRequested = MutableStateFlow(false)
     private var hc: HcClient? = null
 
     fun get(context: Context): SyncEngine {

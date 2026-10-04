@@ -86,8 +86,9 @@ class HookCoordinator(private val xposed: XposedInterface) {
             var lastPush = 0L
             while (true) {
                 try {
-                    // 30 秒一轮：轻量地看一眼有没有手动请求；真正的推送按用户设的间隔走
-                    Thread.sleep(30_000L)
+                    // 5 秒一轮：只做一次很轻的跨进程查询，用来及时响应用户点的「立即同步」。
+                    // 真正的数据推送仍按用户设置的间隔走，不会因此变频繁。
+                    Thread.sleep(POLL_MS)
                     val cfg = RemoteConfig.fetch(force = true) ?: continue
 
                     val manual = cfg.backfillRequested
@@ -102,7 +103,6 @@ class HookCoordinator(private val xposed: XposedInterface) {
                         }
                         pushNow(withProbe = manual, incremental = !manual)
                         lastPush = System.currentTimeMillis()
-                        if (manual) RemoteConfig.reportBackfillDone()
                     }
                 } catch (t: Throwable) {
                     Log.e(TAG, "周期推送异常", t)
@@ -144,5 +144,8 @@ class HookCoordinator(private val xposed: XposedInterface) {
 
     companion object {
         private const val TAG = "OHSyncHook"
+
+        /** 轮询间隔。只查一次配置，成本极低（一次 binder 调用）。 */
+        private const val POLL_MS = 5_000L
     }
 }

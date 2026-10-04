@@ -85,8 +85,14 @@ class SyncReceiverProvider : ContentProvider() {
                 }
                 // Hook 侧完成一次手动同步后回报，避免重复触发
                 "backfillDone" -> engine.clearBackfillRequest()
-                // Hook 侧完成一次增量推送后回报时间点，下次只取这之后的数据
-                "syncDone" -> extras?.getLong("at")?.let { Settings.setLastSyncAt(requireNotNull(context), it) }
+                // Hook 侧一次推送真正结束后回报：记下时间点（下次增量只取这之后的数据），
+                // 同时清掉「已请求回填」标志 —— UI 以此判断手动同步已完成。
+                "syncDone" -> {
+                    extras?.getLong("at")?.let {
+                        Settings.setLastSyncAt(requireNotNull(context), it)
+                    }
+                    engine.clearBackfillRequest()
+                }
                 "requestBackfill" -> engine.requestBackfill()
                 else -> Unit
             }
