@@ -25,6 +25,8 @@ class HookCoordinator(private val xposed: XposedInterface) {
         capture.onDatabaseReady = { db ->
             reader.attach(db)
             runCatching { discoverSchema(cl) }.onFailure { Log.e(TAG, "扫描失败", it) }
+            runCatching { SleepProbe.run(reader) }
+                .onFailure { Log.e(TAG, "睡眠分段自检失败", it) }
             if (!pushedOnce) {
                 pushedOnce = true
                 // 历史全量：拿到库就推一次，之后只做增量
@@ -83,7 +85,7 @@ class HookCoordinator(private val xposed: XposedInterface) {
         if (now - lastPushAt < 2000) return
         lastPushAt = now
         Thread {
-            runCatching { Pusher.push(reader, mapping, isBackfill = false) }
+            runCatching { Pusher.push(reader, mapping) }
                 .onFailure { Log.e(TAG, "增量推送失败", it) }
         }.apply { isDaemon = true }.start()
     }
@@ -92,7 +94,7 @@ class HookCoordinator(private val xposed: XposedInterface) {
     fun pushFullHistory() {
         if (!reader.isReady()) { Log.w(TAG, "数据库未就绪，无法回填"); return }
         Thread {
-            runCatching { Pusher.push(reader, mapping, isBackfill = true) }
+            runCatching { Pusher.push(reader, mapping) }
                 .onFailure { Log.e(TAG, "回填失败", it) }
         }.apply { isDaemon = true }.start()
     }

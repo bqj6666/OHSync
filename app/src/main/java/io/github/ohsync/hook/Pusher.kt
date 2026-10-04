@@ -3,7 +3,6 @@ package io.github.ohsync.hook
 import android.util.Log
 import android.content.ContentValues
 import io.github.ohsync.core.PayloadCodec
-import io.github.ohsync.core.RecordType
 import io.github.ohsync.core.SyncRecord
 
 /**
@@ -18,26 +17,26 @@ object Pusher {
     private const val PROVIDER_SUFFIX = ".sync"
     private const val OHSYNC_PACKAGE = "io.github.ohsync"
 
-    fun push(reader: TableReader, mapping: EntityMapping, isBackfill: Boolean) {
+    fun push(reader: TableReader, mapping: EntityMapping) {
         val plan = QueryPlan.forTables(reader, mapping)
         if (plan.isEmpty()) {
             Log.w(TAG, "没有可推送的表")
             return
         }
         var total = 0
-        for ((table, spec) in plan) {
+        for ((_, spec) in plan) {
             val rows = reader.query(spec.sql)
-            val records = rows.mapNotNull { spec.toRecord(table, it) }
+            val records = rows.mapNotNull(spec.toRecord)
             if (records.isNotEmpty()) {
-                send(table, records, isBackfill)
+                send(spec.type.id, records)
                 total += records.size
-                Log.i(TAG, "$table -> ${records.size} 条")
+                Log.i(TAG, "${spec.type.label} : ${records.size} 条")
             }
         }
         Log.i(TAG, "推送完成：共 $total 条")
     }
 
-    private fun send(type: String, records: List<SyncRecord>, isBackfill: Boolean) {
+    private fun send(type: String, records: List<SyncRecord>) {
         runCatching {
             val ctx = AppContextHolder.context ?: return
             val values = ContentValues().apply {
