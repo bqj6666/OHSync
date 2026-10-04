@@ -40,7 +40,12 @@ class HcClient(private val context: Context) {
     }
 
     init {
-        Log.i(TAG, "需要申请的写权限共 ${requiredPermissions.size} 条；HC 客户端可用=${client != null}")
+        val missing = missingPermissions()
+        Log.i(
+            TAG,
+            "写权限共 ${requiredPermissions.size} 条，未授予 ${missing.size} 条" +
+                if (missing.isEmpty()) "" else "：$missing",
+        )
     }
 
     suspend fun grantedPermissions(): Set<String> =
