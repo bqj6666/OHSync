@@ -47,16 +47,24 @@ object SyncEngine {
     private suspend fun consume(batch: SyncBatch) = mutex.withLock {
         val client = hc ?: run { log("Health Connect 不可用，丢弃 ${batch.records.size} 条"); return@withLock }
         var ok = 0L; var skipped = 0L; var failed = 0L
+        val mapped = ArrayList<androidx.health.connect.client.records.Record>(batch.records.size)
         for (r in batch.records) {
             try {
                 if (r.recordType.hcRecord == null) { skipped++; continue }
-                client.write(RecordMapper.map(r))
-                ok++
+                mapped += RecordMapper.map(r)
             } catch (t: Throwable) {
                 failed++
-                Log.e(TAG, "write failed for ${r.recordType.id}/${r.sourceKey}", t)
-                log("写入失败 ${r.recordType.id}: ${t.message}")
+                Log.e(TAG, "map failed for ${r.recordType.id}/${r.sourceKey}", t)
+                log("翻译失败 ${r.recordType.id}: ${t.message}")
             }
+        }
+        try {
+            client.writeAll(mapped)
+            ok = mapped.size.toLong()
+        } catch (t: Throwable) {
+            failed += mapped.size
+            Log.e(TAG, "批量写入失败（${mapped.size} 条）", t)
+            log("批量写入失败：${t.message}")
         }
         _status.value = _status.value.copy(
             hookConnected = true,

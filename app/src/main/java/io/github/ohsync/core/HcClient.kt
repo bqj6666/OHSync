@@ -52,9 +52,15 @@ class HcClient(private val context: Context) {
      *
      * 这条语义需要装到设备上实测确认，代码先按此实现。
      */
-    suspend fun write(record: Record) {
+    suspend fun write(record: Record) = writeAll(listOf(record))
+
+    /**
+     * 批量写入。Health Connect 单次上限 1000 条，这里按 400 分批：
+     * 一次一条会让几千条数据要跑几千次 IPC，慢到不可用。
+     */
+    suspend fun writeAll(records: List<Record>) {
         val c = client ?: throw IllegalStateException("Health Connect unavailable")
-        c.insertRecords(listOf(record))
+        records.chunked(BATCH).forEach { chunk -> c.insertRecords(chunk) }
     }
 
     fun availabilityText(): String =
@@ -62,6 +68,7 @@ class HcClient(private val context: Context) {
 
     companion object {
         private const val TAG = "OHSyncHc"
+        private const val BATCH = 400
         const val PROVIDER = "com.google.android.apps.healthdata"
 
         fun clientRecordId(type: RecordType, sourceKey: String) = "ohsync:${type.id}:$sourceKey"

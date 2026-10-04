@@ -41,9 +41,22 @@ object Pusher {
             Log.e(TAG, "没有 Context，无法推送 $type")
             return
         }
-        if (!TokenHolder.isPaired()) {
-            Log.e(TAG, "尚未配对，无法推送 $type（请在 OHSync 里复制口令并粘贴回来）")
-            return
+        if (TokenHolder.token.isEmpty()) {
+            // 主动向主进程取口令：Hook 侧没有 UI，用户无法手抄，只能这样拿
+            val fetched = try {
+                ctx.contentResolver.call(
+                    Uri.parse("content://$OHSYNC_PACKAGE$PROVIDER_SUFFIX"),
+                    "token", null, null,
+                )?.getString("token")
+            } catch (t: Throwable) {
+                Log.e(TAG, "取口令失败", t)
+                null
+            }
+            if (fetched.isNullOrEmpty()) {
+                Log.e(TAG, "主进程还没准备好，暂不推送 $type")
+                return
+            }
+            TokenHolder.pair(fetched)
         }
         try {
             val values = ContentValues().apply {

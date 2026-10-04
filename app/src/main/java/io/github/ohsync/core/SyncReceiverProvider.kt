@@ -68,8 +68,13 @@ class SyncReceiverProvider : ContentProvider() {
         val engine = SyncEngine.get(ctx())
         return android.os.Bundle().apply {
             when (method) {
-                // Hook 进程启动时自检：口令对不对、有没有待回填
+                // Hook 进程启动时自检：口令对不对
                 "ping" -> putBoolean("ok", arg != null && TokenStore.constantTimeEquals(arg, expected))
+                // Hook 侧取口令。
+                //
+                // 为什么让读方来取，而不是让用户手抄：Hook 代码跑在 OPPO 健康进程里，
+                // 那里没有我们自己的 UI，用户没有任何途径把口令粘进去。
+                "token" -> putString("token", expected)
                 "requestBackfill" -> engine.requestBackfill()
                 else -> Unit
             }

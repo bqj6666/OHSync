@@ -6,13 +6,18 @@ import io.github.ohsync.core.RecordType
 import io.github.ohsync.core.SyncRecord
 
 /**
- * 从 OPPO 数据库的真实结构推导出「读什么、怎么翻译」。
+ * 从 OPPO 数据库的真实结构推导「读什么、怎么翻译」。
  *
- * 关键取舍：表名与列名都取自**运行中的数据库**（sqlite_master + PRAGMA table_info），
- * 不硬编码、不靠 dex 推断。OPPO 改内部类名完全不影响，改表结构也只会在自检里报出来。
+ * 表名与列名都取自**运行中的数据库**（sqlite_master + PRAGMA table_info），
+ * 不硬编码、不靠 dex 推断。
  *
- * 单位未经验证的字段一律不写进 Health Connect —— 宁可少同步，也不能写错数据。
- * 未启用的字段由 [Probe] 打印原始样本，拿到证据后再开。
+ * 单位全部来自实测样本（见 Probe 的输出），不靠猜：
+ *   total_distance / distance —— 米
+ *   total_calories / calories —— 卡，除以 1000 才是千卡
+ *   weight —— 克，除以 1000 才是千克
+ *   heart_rate_value —— bpm；systolic/diastolic —— mmHg；血氧 —— 百分比
+ *
+ * 没被证据支持的字段一律不写进 Health Connect。
  */
 internal class TableSpec(
     val type: RecordType,
@@ -24,57 +29,172 @@ internal object QueryPlan {
 
     private const val TAG = "OHSyncPlan"
 
+    /** 只同步最近这些天，避免一次把几年的分钟级明细全灌进 HC。 */
+    private const val WINDOW_DAYS = 90L
+    private val since: Long get() = System.currentTimeMillis() - WINDOW_DAYS * 86_400_000L
+
     fun forTables(reader: TableReader): List<TableSpec> {
-        val specs = ArrayList<TableSpec>()
+        val out = ArrayList<TableSpec>()
         for (table in reader.tableNames()) {
             val cols = reader.columns(table)
             if (cols.isEmpty()) continue
-            stepsSpec(table, cols)?.let { specs.add(it) }
+            val key = table.lowercase()
+            when {
+                key.contains("sportdatadetail") -> out += segmentSpecs(table, cols)
+                key == "dbweightbodyfattable" -> weightSpec(table, cols)?.let { out += it }
+                key == "dbheartrate" -> heartRateSpec(table, cols)?.let { out += it }
+                key == "dbbloodpressure" -> bloodPressureSpec(table, cols)?.let { out += it }
+                key == "dbbloodoxygensaturation" -> bloodOxygenSpec(table, cols)?.let { out += it }
+            }
         }
-        return specs
+        Log.i(TAG, "生成 ${out.size} 条同步方案：${out.map { it.type.label }}")
+        return out
     }
 
     /**
-     * 步数：唯一的、语义无歧义的指标（就是次数），所以 P1 先只同步它。
-     *
-     * 子数据表用 total_steps（按天汇总），明细表用 steps（按段），
-     * 两者时间列名不同（total_* 表用 start_time，明细/睡眠表用 start_timestamp），
-     * 这里按实际存在的列自适应。
+     * 分段明细表：一段一行，含 steps / distance / calories。
+     * 一张表出三条记录（步数、距离、活动卡路里），都以 start_time 为主键素材。
      */
-    private fun stepsSpec(table: String, cols: Set<String>): TableSpec? {
-        val valueCol = when {
-            "total_steps" in cols -> "total_steps"
-            "steps" in cols && "start_time" in cols -> "steps"
-            else -> return null
-        }
-        val startCol = timeCol(cols, "start") ?: return null
+    private fun segmentSpecs(table: String, cols: Set<String>): List<TableSpec> {
+        val out = ArrayList<TableSpec>()
+        val startCol = timeCol(cols, "start") ?: return out
         val endCol = timeCol(cols, "end")
-        if ("_id" !in cols) return null
-
         val selectEnd = if (endCol != null) ", $endCol" else ""
-        val sql = "SELECT _id, $startCol$selectEnd, $valueCol FROM $table " +
-            "WHERE $valueCol > 0 ORDER BY $startCol DESC LIMIT ${TableReader.MAX_ROWS}"
 
-        return TableSpec(RecordType.STEPS, sql) { r ->
-            val id = r["_id"]
-            val start = r[startCol]?.toLongOrNull()
-            val end = endCol?.let { r[it]?.toLongOrNull() }
-            val value = r[valueCol]?.toDoubleOrNull()
-            if (id == null || start == null || start <= 0L || value == null || value <= 0.0) {
+        fun spec(type: RecordType, column: String, valueKey: String, convert: (Double) -> Double) {
+            if (column !in cols) return
+            val sql = "SELECT $startCol$selectEnd, $column FROM $table " +
+                "WHERE $column > 0 AND $startCol >= $since ORDER BY $startCol DESC " +
+                "LIMIT ${TableReader.MAX_ROWS}"
+            out += TableSpec(type, sql) { r ->
+                val start = r[startCol]?.toLongOrNull()
+                val value = r[column]?.toDoubleOrNull()
+                if (start == null || start <= 0L || value == null || value <= 0.0) {
+                    null
+                } else {
+                    val end = endCol?.let { r[it]?.toLongOrNull() }
+                    SyncRecord(
+                        type = type.id,
+                        // 该表 _id 恒为 0，不能当主键；用起始时间毫秒定位一段
+                        sourceKey = "$table:$start",
+                        startTime = start,
+                        endTime = maxOf(end ?: start, start),
+                        values = mapOf(valueKey to convert(value)),
+                    )
+                }
+            }
+        }
+
+        spec(RecordType.STEPS, "steps", RecordMapper.V_COUNT) { it }
+        spec(RecordType.DISTANCE, "distance", RecordMapper.V_DISTANCE_M) { it }  // 已是米
+        spec(RecordType.ACTIVE_CALORIES, "calories", RecordMapper.V_CALORIES) { it / 1000.0 }
+        return out
+    }
+
+    /** DBWeightBodyFatTable：weight 单位为克。 */
+    private fun weightSpec(table: String, cols: Set<String>): TableSpec? {
+        if ("weight" !in cols || "measurement_timestamp" !in cols) return null
+        val sql = "SELECT weight_id, measurement_timestamp, weight, body_fat_rate FROM $table " +
+            "WHERE weight > 0 ORDER BY measurement_timestamp DESC LIMIT ${TableReader.MAX_ROWS}"
+        return TableSpec(RecordType.WEIGHT, sql) { r ->
+            val ts = r["measurement_timestamp"]?.toLongOrNull()
+            val grams = r["weight"]?.toDoubleOrNull()
+            if (ts == null || ts <= 0L || grams == null || grams <= 0.0) {
                 null
             } else {
                 SyncRecord(
-                    type = RecordType.STEPS.id,
-                    sourceKey = "$table:$id",
-                    startTime = start,
-                    endTime = maxOf(end ?: start, start),
-                    values = mapOf(RecordMapper.V_COUNT to value),
+                    type = RecordType.WEIGHT.id,
+                    sourceKey = r["weight_id"] ?: "w:$ts",
+                    startTime = ts,
+                    endTime = ts,
+                    values = mapOf(RecordMapper.V_MASS_KG to grams / 1000.0),
                 )
             }
         }
     }
 
-    /** 时间列名在不同表里不一致：汇总表是 start_time，明细/睡眠表是 start_timestamp。 */
+    /** DBHeartRate：一次测量一行，值即 bpm。 */
+    private fun heartRateSpec(table: String, cols: Set<String>): TableSpec? {
+        if ("heart_rate_value" !in cols || "data_created_timestamp" !in cols) return null
+        val sql = "SELECT _id, data_created_timestamp, heart_rate_value FROM $table " +
+            "WHERE heart_rate_value > 0 AND data_created_timestamp >= $since " +
+            "ORDER BY data_created_timestamp DESC LIMIT ${TableReader.MAX_ROWS}"
+        return TableSpec(RecordType.HEART_RATE, sql) { r ->
+            val id = r["_id"] ?: return@TableSpec null
+            val ts = r["data_created_timestamp"]?.toLongOrNull() ?: return@TableSpec null
+            val bpm = r["heart_rate_value"]?.toDoubleOrNull() ?: return@TableSpec null
+            if (ts <= 0L || bpm <= 0.0) {
+                null
+            } else {
+                SyncRecord(
+                    type = RecordType.HEART_RATE.id,
+                    sourceKey = "$table:$id",
+                    startTime = ts,
+                    endTime = ts,
+                    values = mapOf(
+                        RecordMapper.V_BPM to bpm,
+                        "sample_0_bpm" to bpm,
+                        "sample_0_at" to ts.toDouble(),
+                    ),
+                )
+            }
+        }
+    }
+
+    /** DBBloodPressure：measure_timestamp / systolic / diastolic，单位 mmHg。 */
+    private fun bloodPressureSpec(table: String, cols: Set<String>): TableSpec? {
+        if (!cols.containsAll(listOf("measure_timestamp", "systolic", "diastolic"))) return null
+        val sql = "SELECT measure_timestamp, systolic, diastolic FROM $table " +
+            "WHERE systolic > 0 AND diastolic > 0 AND measure_timestamp >= $since " +
+            "ORDER BY measure_timestamp DESC LIMIT ${TableReader.MAX_ROWS}"
+        return TableSpec(RecordType.BLOOD_PRESSURE, sql) { r ->
+            val ts = r["measure_timestamp"]?.toLongOrNull() ?: return@TableSpec null
+            val sys = r["systolic"]?.toDoubleOrNull() ?: return@TableSpec null
+            val dia = r["diastolic"]?.toDoubleOrNull() ?: return@TableSpec null
+            if (ts <= 0L) {
+                null
+            } else {
+                SyncRecord(
+                    type = RecordType.BLOOD_PRESSURE.id,
+                    sourceKey = "$table:${ts}_${sys.toInt()}_${dia.toInt()}",
+                    startTime = ts,
+                    endTime = ts,
+                    values = mapOf(
+                        RecordMapper.V_PRESSURE_SYS to sys,
+                        RecordMapper.V_PRESSURE_DIA to dia,
+                    ),
+                )
+            }
+        }
+    }
+
+    /** DBBloodOxygenSaturation：值为百分比。 */
+    private fun bloodOxygenSpec(table: String, cols: Set<String>): TableSpec? {
+        val valueCol = "blood_oxygen_saturation_value"
+        if (valueCol !in cols || "data_created_timestamp" !in cols) return null
+        val sql = "SELECT _id, data_created_timestamp, $valueCol FROM $table " +
+            "WHERE $valueCol > 0 AND data_created_timestamp >= $since " +
+            "ORDER BY data_created_timestamp DESC LIMIT ${TableReader.MAX_ROWS}"
+        return TableSpec(RecordType.BLOOD_OXYGEN, sql) { r ->
+            val id = r["_id"] ?: return@TableSpec null
+            val ts = r["data_created_timestamp"]?.toLongOrNull() ?: return@TableSpec null
+            val v = r[valueCol]?.toDoubleOrNull() ?: return@TableSpec null
+            // 读数越界的直接丢弃，不往 HC 里写脏数据
+            if (ts <= 0L || v <= 0.0 || v > 100.0) {
+                null
+            } else {
+                SyncRecord(
+                    type = RecordType.BLOOD_OXYGEN.id,
+                    sourceKey = "$table:$id",
+                    startTime = ts,
+                    endTime = ts,
+                    values = mapOf(RecordMapper.V_PERCENT to v),
+                )
+            }
+        }
+    }
+
+    /** 时间列名在不同表里不一致：汇总表是 start_time，明细表是 start_timestamp。 */
     private fun timeCol(cols: Set<String>, prefix: String): String? = when {
         "${prefix}_time" in cols -> "${prefix}_time"
         "${prefix}_timestamp" in cols -> "${prefix}_timestamp"
