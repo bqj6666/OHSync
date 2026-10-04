@@ -52,9 +52,34 @@ fun OHSyncScreen() {
 
     val hc = remember { HcClient(ctx) }
     val required = remember(hc) { hc.requiredPermissions }
+    // 首选：Health Connect 官方授权契约
     val permissionLauncher = rememberLauncherForActivityResult(
         PermissionController.createRequestPermissionResultContract()
     ) { granted -> SyncEngine.notePermission(granted.containsAll(required)) }
+
+    fun openHcAuth() {
+        // 官方契约在部分 ROM 上会被系统权限界面接走然后立刻返回（实测 Android 16 +
+        // ColorOS：GrantPermissionsActivity 弹一下就退，什么也不做）。
+        // 所以同时提供后路：直接打开 Health Connect 主界面，用户在里面授权。
+        permissionLauncher.launch(required)
+        ctx.mainExecutor.execute {
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                if (!SyncEngine.status.value.hcPermissionGranted) {
+                    runCatching {
+                        ctx.startActivity(
+                            android.content.Intent().apply {
+                                component = android.content.ComponentName(
+                                    "com.android.healthconnect.controller",
+                                    "com.android.healthconnect.controller.navigation.TrampolineActivity",
+                                )
+                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                        )
+                    }
+                }
+            }, 1200)
+        }
+    }
 
     var interval by remember { mutableIntStateOf(Settings.intervalMinutes(ctx)) }
     var window by remember { mutableIntStateOf(Settings.windowDays(ctx)) }
@@ -83,8 +108,14 @@ fun OHSyncScreen() {
                                 "没有授权的话，数据读出来也写不进 Health Connect。",
                                 style = MaterialTheme.typography.bodySmall,
                             )
+                            Text(
+                                "提示：在 Health Connect 的「应用权限」里，本应用可能显示在" +
+                                    "「非活跃应用」下。那是因为应用每次更新，Health Connect " +
+                                    "都会撤销它的授权记录；点下面的按钮重新授权即可恢复正常。",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
                             Button(
-                                onClick = { permissionLauncher.launch(required) },
+                                onClick = { openHcAuth() },
                                 modifier = Modifier.fillMaxWidth(),
                             ) { Text("去授权") }
                         }

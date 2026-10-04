@@ -5,12 +5,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import io.github.ohsync.core.SyncEngine
+import io.github.ohsync.core.TokenStore
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 先初始化引擎，让 ContentProvider 之外的主进程侧也处于就绪状态
+        // 初始化引擎与配对 token：Hook 侧会通过 ContentProvider 来取
         SyncEngine.get(this)
+        TokenStore.getOrCreate(this)
         setContent { MaterialTheme { OHSyncScreen() } }
     }
 }

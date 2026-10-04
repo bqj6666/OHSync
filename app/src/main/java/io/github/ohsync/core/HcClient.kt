@@ -1,6 +1,7 @@
 package io.github.ohsync.core
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
@@ -24,12 +25,15 @@ class HcClient(private val context: Context) {
             null
         }
 
-    /** 需要用户授予的权限：每种记录类型的读、写权限。 */
+    /**
+     * 需要授予的权限：每种记录类型的**写**权限。
+     *
+     * 只请求写：OHSync 只往 Health Connect 写，不读别的应用写的健康数据。
+     * 少请求一半权限，授权界面也短一半。
+     */
     val requiredPermissions: Set<String> = buildSet {
         for (type in RecordType.syncable) {
             val kclass = hcRecordKClass(type) ?: continue
-            runCatching { HealthPermission.getReadPermission(kclass) }
-                .getOrNull()?.let { add(it) }
             runCatching { HealthPermission.getWritePermission(kclass) }
                 .getOrNull()?.let { add(it) }
         }
@@ -38,9 +42,19 @@ class HcClient(private val context: Context) {
     suspend fun grantedPermissions(): Set<String> =
         client?.permissionController?.getGrantedPermissions() ?: emptySet()
 
-    suspend fun isWriteGranted(): Boolean {
-        val granted = grantedPermissions()
-        return requiredPermissions.isNotEmpty() && requiredPermissions.all { it in granted }
+    /**
+     * 能否写入。
+     *
+     * 判据是**平台层权限**，不是 Health Connect 内部的授权记录：
+     * 两者会不一致（比如应用更新时 HC 会撤销内部记录，但平台权限仍在），
+     * 而真正决定写入成败的是平台权限。用 HC 的内部记录会让界面显示「未授权」
+     * 却实际写入成功，误导用户。
+     */
+    fun isWriteGranted(): Boolean {
+        val ctx = context
+        return requiredPermissions.isNotEmpty() && requiredPermissions.all {
+            ctx.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED
+        }
     }
 
     /**
