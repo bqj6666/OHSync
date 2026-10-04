@@ -39,6 +39,10 @@ class HcClient(private val context: Context) {
         }
     }
 
+    init {
+        Log.i(TAG, "需要申请的写权限共 ${requiredPermissions.size} 条；HC 客户端可用=${client != null}")
+    }
+
     suspend fun grantedPermissions(): Set<String> =
         client?.permissionController?.getGrantedPermissions() ?: emptySet()
 
@@ -52,9 +56,15 @@ class HcClient(private val context: Context) {
      */
     fun isWriteGranted(): Boolean {
         val ctx = context
-        return requiredPermissions.isNotEmpty() && requiredPermissions.all {
+        if (requiredPermissions.isEmpty()) {
+            Log.w(TAG, "需要申请的权限集合为空，无法判断授权状态")
+            return false
+        }
+        val granted = requiredPermissions.count {
             ctx.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED
         }
+        Log.i(TAG, "写入权限已授予 $granted / ${requiredPermissions.size}")
+        return granted == requiredPermissions.size
     }
 
     /**
@@ -100,6 +110,10 @@ class HcClient(private val context: Context) {
         Log.i(TAG, "已清除 $deleted 类记录")
         return deleted
     }
+
+    /** 供 UI 显示，方便用户看出到底差哪几条。 */
+    fun missingPermissions(): List<String> =
+        requiredPermissions.filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
 
     fun availabilityText(): String =
         if (client == null) "Health Connect 不可用（SDK 状态=$sdkStatus）" else "Health Connect 可用"
