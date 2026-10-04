@@ -78,6 +78,18 @@ object SyncEngine {
             if (batch.isBackfill) "（历史回填）" else "（实时）")
     }
 
+    /** 清除本应用写入 Health Connect 的全部记录（早期版本有过重复插入）。 */
+    fun clearAll() {
+        scope.launch {
+            val c = hc ?: return@launch
+            val n = runCatching { c.deleteAllMine() }
+                .onFailure { Log.e(TAG, "清除失败", it) }
+                .getOrDefault(0)
+            _status.value = _status.value.copy(syncedCount = 0)
+            log("已清除 $n 类记录，下次推送会重新写入")
+        }
+    }
+
     fun requestBackfill() {
         _backfillRequested.value = true
         _status.value = _status.value.copy(pendingBackfill = true)

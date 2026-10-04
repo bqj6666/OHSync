@@ -62,8 +62,13 @@ object RecordMapper {
      * Metadata 的主构造器在 HC 1.1.0 里是 internal，外部只能用 Companion 的工厂方法。
      * dataOrigin 本来就由 Health Connect 按调用方包名自动填，不需要（也改不了）。
      */
+    /**
+     * 带 clientRecordId 的 Metadata，用于幂等覆盖。
+     * 注意不能用 Metadata.autoRecordedWithId —— 它只设 id 字段，不设 clientRecordId，
+     * 会导致每次推送都新增记录（实测踩过）。原因见 MetadataFactory。
+     */
     fun metadata(clientRecordId: String): Metadata =
-        Metadata.autoRecordedWithId(clientRecordId, DEVICE)
+        MetadataFactory.withClientId(clientRecordId, DEVICE)
 
     fun map(r: SyncRecord): Record {
         val start = Instant.ofEpochMilli(r.startTime)

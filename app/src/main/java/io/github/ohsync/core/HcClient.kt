@@ -63,6 +63,31 @@ class HcClient(private val context: Context) {
         records.chunked(BATCH).forEach { chunk -> c.insertRecords(chunk) }
     }
 
+    /**
+     * 删除本应用写入的全部记录。
+     *
+     * 用途：早期版本没带 clientRecordId，同一份数据被反复插入产生了大量重复，
+     * 需要一次清干净再重同步。只删自己的（dataOriginFilter 限定本包名），
+     * 不碰其他应用写的数据。
+     */
+    suspend fun deleteAllMine(): Int {
+        val c = client ?: return 0
+        var deleted = 0
+        for (type in RecordType.syncable) {
+            val kclass = hcRecordKClass(type) ?: continue
+            runCatching {
+                c.deleteRecords(
+                    recordType = kclass,
+                    clientRecordIds = emptyList(),
+                    dataOriginFilters = listOf(context.packageName),
+                )
+                deleted++
+            }.onFailure { Log.w(TAG, "清除 ${type.label} 失败", it) }
+        }
+        Log.i(TAG, "已清除 $deleted 类记录")
+        return deleted
+    }
+
     fun availabilityText(): String =
         if (client == null) "Health Connect 不可用（SDK 状态=$sdkStatus）" else "Health Connect 可用"
 

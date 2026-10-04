@@ -107,6 +107,9 @@ fun OHSyncScreen(token: String) {
                         OutlinedButton(onClick = { copyToken(ctx, token) }, modifier = Modifier.fillMaxWidth()) {
                             Text("复制配对口令")
                         }
+                        OutlinedButton(onClick = { SyncEngine.clearAll() }, modifier = Modifier.fillMaxWidth()) {
+                            Text("清除本应用写入的数据")
+                        }
                     }
                 }
             }
