@@ -42,6 +42,9 @@
     <uses-permission android:name="android.permission.health.WRITE_STEPS" />
     <uses-permission android:name="android.permission.health.WRITE_TOTAL_CALORIES_BURNED" />
     <uses-permission android:name="android.permission.health.WRITE_WEIGHT" />
+    <!-- 名字不是 WRITE_VO2：HC 里最大摄氧量的权限叫 WRITE_VO2_MAX（少一个字母会导致
+         「全部已授予」的判断永远不成立，UI 一直显示未授权） -->
+    <uses-permission android:name="android.permission.health.WRITE_VO2_MAX" />
 
 
     <application
