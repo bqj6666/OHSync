@@ -34,9 +34,15 @@ public final class HcAuthIntent {
     }
 
     /** 显式指向 HC 授权页的 Intent；调用方负责 startActivity。 */
+    @SuppressWarnings({"unchecked", "rawtypes"})
     public static Intent forPermissions(Collection<String> permissions) {
         Intent intent = new Intent(ACTION_REQUEST_PERMISSIONS);
-        intent.putParcelableArrayListExtra(EXTRA_PERMISSIONS, new ArrayList<>(permissions));
+        // 平台签名是 putParcelableArrayListExtra(String, ArrayList<? extends Parcelable>)，
+        // 而这里装的是 String（不是 Parcelable），源码层通不过类型检查。
+        // 但 Bundle 实际是按 writeValue 序列化的，String 走的就是它的正常分支，
+        // 运行时完全正确 —— Health Connect 自己的实现也是这么传的（字节码里就是原始类型）。
+        ArrayList list = new ArrayList(permissions);
+        intent.putParcelableArrayListExtra(EXTRA_PERMISSIONS, list);
         intent.setComponent(new ComponentName(CONTROLLER_PACKAGE, PERMISSIONS_ACTIVITY));
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         return intent;
