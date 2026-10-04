@@ -63,39 +63,56 @@ object SleepBuilder {
         val out = ArrayList<SyncRecord>()
         var i = 0
         while (i < pieces.size) {
-            val sessionStart = pieces[i].first
-            var sessionEnd = pieces[i].second
-            val stages = ArrayList<SleepStage>()
+            // 先划出这一段睡眠包含哪些 piece，再定它的边界
             var j = i
-            while (j < pieces.size) {
-                val p = pieces[j]
-                if (j > i && p.first - sessionEnd > GAP_MS) break
-                // 分段必须落在会话区间内，越界的裁剪掉
-                if (p.second > p.first) {
-                    stages += SleepStage(
-                        start = maxOf(p.first, sessionStart),
-                        end = maxOf(p.second, p.first + 60_000L),
-                        stage = p.third,
-                    )
-                }
-                sessionEnd = maxOf(sessionEnd, p.second)
+            var sessionEnd = pieces[i].second
+            while (j + 1 < pieces.size && pieces[j + 1].first - sessionEnd <= GAP_MS) {
                 j++
+                sessionEnd = maxOf(sessionEnd, pieces[j].second)
             }
-            val duration = sessionEnd - sessionStart
-            if (duration >= MIN_SESSION_MS && stages.isNotEmpty()) {
+            val sessionStart = pieces[i].first
+            val group = pieces.subList(i, j + 1)
+            val stages = buildStages(group, sessionStart, sessionEnd)
+
+            if (sessionEnd - sessionStart >= MIN_SESSION_MS && stages.isNotEmpty()) {
                 out += SyncRecord(
                     type = RecordType.SLEEP_SESSION.id,
                     sourceKey = "sleep:$sessionStart",
                     startTime = sessionStart,
                     endTime = sessionEnd,
-                    stages = stages.sortedBy { it.start },
+                    stages = stages,
                 )
             }
-            i = j
+            i = j + 1
         }
         Log.i(TAG, "拼出 ${out.size} 段睡眠，共 ${pieces.size} 个分段")
         out.take(3).forEach { r ->
             Log.i(TAG, "  会话 ${r.startTime}~${r.endTime}，${r.stages.size} 个阶段")
+        }
+        return out
+    }
+
+    /**
+     * 把一组 piece 变成 HC 可接受的 stages。
+     *
+     * Health Connect 对 stages 有硬校验：必须按时间有序、互不重叠、且完全落在
+     * 会话区间内，否则构造 SleepSessionRecord 时直接抛 IllegalArgumentException。
+     * 所以这里逐个裁剪到 [sessionStart, sessionEnd]，并串行推进保证不重叠。
+     */
+    private fun buildStages(
+        group: List<Triple<Long, Long, Int>>,
+        sessionStart: Long,
+        sessionEnd: Long,
+    ): List<SleepStage> {
+        val out = ArrayList<SleepStage>(group.size)
+        var cursor = sessionStart
+        for ((s, e, stage) in group) {
+            val start = maxOf(s, cursor, sessionStart)
+            val end = minOf(e, sessionEnd)
+            if (end - start >= 60_000L) {
+                out += SleepStage(start, end, stage)
+                cursor = end
+            }
         }
         return out
     }
