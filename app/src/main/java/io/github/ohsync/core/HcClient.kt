@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.Record
+import androidx.health.connect.client.time.TimeRangeFilter
 
 /**
  * Health Connect 客户端封装：可用性、权限、写入。
@@ -76,11 +77,8 @@ class HcClient(private val context: Context) {
         for (type in RecordType.syncable) {
             val kclass = hcRecordKClass(type) ?: continue
             runCatching {
-                c.deleteRecords(
-                    recordType = kclass,
-                    clientRecordIds = emptyList(),
-                    dataOriginFilters = listOf(context.packageName),
-                )
+                // 这个重载只删「调用方应用自己写入的」指定类型记录，不会碰到别的应用
+                c.deleteRecords(kclass, TimeRangeFilter.all())
                 deleted++
             }.onFailure { Log.w(TAG, "清除 ${type.label} 失败", it) }
         }
