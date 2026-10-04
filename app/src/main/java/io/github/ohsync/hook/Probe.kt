@@ -16,6 +16,8 @@ object Probe {
 
     fun run(reader: TableReader) {
         sleepPieceTypes(reader)
+        sleepNightTotals(reader)
+        sleepSessions(reader)
         sportSamples(reader)
         bodySamples(reader)
     }
@@ -92,5 +94,42 @@ object Probe {
     private fun fmt(millis: String?): String {
         val v = millis?.toLongOrNull() ?: return "-"
         return if (v <= 0) "-" else java.time.Instant.ofEpochMilli(v).toString()
+    }
+
+    /**
+     * 按「日期 + type」汇总分段时长。
+     *
+     * 用途：拿它和 OPPO 健康界面上显示的睡眠阶段对账，确定 type 的语义。
+     * 例：界面显示某晚 深睡68分/浅睡262分/快速眼动106分/清醒2分，
+     * 那么当晚四种 type 的分钟数就能一一对应上，映射不再是猜。
+     */
+    private fun sleepNightTotals(reader: TableReader) {
+        if (reader.tableNames().none { it == "DBSleepPiece" }) return
+        val rows = reader.query(
+            "SELECT date(start_timestamp/1000, 'unixepoch', '+8 hours') AS d, type, " +
+                "COUNT(*) AS cnt, SUM(end_timestamp - start_timestamp)/60000 AS mins " +
+                "FROM DBSleepPiece GROUP BY d, type ORDER BY d DESC, type LIMIT 24"
+        )
+        Log.i(TAG, "DBSleepPiece 按夜汇总（日期 / type / 段数 / 分钟）：")
+        for (r in rows) {
+            Log.i(TAG, "  ${r["d"]}  type=${r["type"]}  段数=${r["cnt"]}  共 ${r["mins"]} 分钟")
+        }
+    }
+
+    /** DBSleepTable 的睡眠段（判断夜间睡眠与小睡如何区分）。 */
+    private fun sleepSessions(reader: TableReader) {
+        if (reader.tableNames().none { it == "DBSleepTable" }) return
+        val cols = reader.columns("DBSleepTable")
+        val picked = listOf(
+            "start_time", "end_time", "sleep_type", "sleep_state", "device_type",
+        ).filter { it in cols }
+        if (picked.isEmpty()) return
+        val rows = reader.query(
+            "SELECT ${picked.joinToString()} FROM DBSleepTable ORDER BY start_time DESC LIMIT 6"
+        )
+        Log.i(TAG, "DBSleepTable 最近 6 段（列：${picked.joinToString()}）：")
+        for (r in rows) {
+            Log.i(TAG, "  " + picked.joinToString { "$it=${r[it]}" })
+        }
     }
 }
