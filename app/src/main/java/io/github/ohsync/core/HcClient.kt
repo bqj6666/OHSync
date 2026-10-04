@@ -77,8 +77,9 @@ class HcClient(private val context: Context) {
         for (type in RecordType.syncable) {
             val kclass = hcRecordKClass(type) ?: continue
             runCatching {
-                // 这个重载只删「调用方应用自己写入的」指定类型记录，不会碰到别的应用
-                c.deleteRecords(kclass, TimeRangeFilter.all())
+                // 这个重载只删「调用方应用自己写入的」指定类型记录，不会碰到别的应用。
+                // TimeRangeFilter 没有 all()，用一个覆盖全部时间的大区间代替。
+                c.deleteRecords(kclass, TimeRangeFilter.between(EPOCH, FAR_FUTURE))
                 deleted++
             }.onFailure { Log.w(TAG, "清除 ${type.label} 失败", it) }
         }
@@ -92,6 +93,11 @@ class HcClient(private val context: Context) {
     companion object {
         private const val TAG = "OHSyncHc"
         private const val BATCH = 400
+
+        /** 用于「清空全部」的时间区间端点。 */
+        private val EPOCH: java.time.Instant = java.time.Instant.EPOCH
+        private val FAR_FUTURE: java.time.Instant =
+            java.time.LocalDate.of(2100, 1, 1).atStartOfDay(java.time.ZoneOffset.UTC).toInstant()
         const val PROVIDER = "com.google.android.apps.healthdata"
 
         fun clientRecordId(type: RecordType, sourceKey: String) = "ohsync:${type.id}:$sourceKey"
