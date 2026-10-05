@@ -5,6 +5,13 @@
          注意：光声明 WRITE_HEALTH_DATA 不够 —— Health Connect 是按**记录类型**逐项校验的，
          必须把每种要写的类型权限都声明出来，否则运行时授权无效、写入报 SecurityException。 -->
     <uses-permission android:name="android.permission.health.WRITE_HEALTH_DATA" />
+
+    <!-- 常驻前台服务：本机不会因为数据接口访问去拉起没在跑的应用，
+         没有它后台同步必然失败（详见 SyncService 的说明） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.health.READ_HEALTH_DATA" />
 
     <!-- 逐类型写权限（与 core/RecordType.kt 里 hcRecord 非空的类型一一对应） -->
@@ -76,6 +83,23 @@
 
         <!-- Hook 进程把读取到的数据推给主进程；token 校验，不用自定义权限
              （com.heytap.health 是第三方应用，签名级自定义权限无法授予它） -->
+        <service
+            android:name=".core.SyncService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="保持与本机健康数据读取端的连接，按用户设定的间隔把健康数据同步到 Health Connect" />
+        </service>
+
+        <receiver
+            android:name=".core.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name=".core.SyncReceiverProvider"
             android:authorities="${applicationId}.sync"

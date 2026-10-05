@@ -14,6 +14,7 @@ object Settings {
     private const val KEY_INTERVAL = "sync_interval_minutes"
     private const val KEY_WINDOW = "window_days"
     private const val KEY_LAST_SYNC = "last_incremental_sync_at"
+    private const val KEY_KEEP_ALIVE = "keep_alive"
 
     /** 同步间隔选项。0 表示只在手动点「立即同步」时才推。 */
     val INTERVAL_OPTIONS: List<Pair<Int, String>> = listOf(
@@ -76,6 +77,20 @@ object Settings {
 
     fun setLastSyncAt(context: Context, at: Long) {
         prefs(context).edit().putLong(KEY_LAST_SYNC, at).apply()
+    }
+
+    /**
+     * 是否保持常驻（前台服务）。
+     *
+     * 默认开。关掉可以省一个常驻进程和一条通知，但本机不会因为数据接口访问去
+     * 拉起没在跑的应用，后台同步会随之失效 —— 那时只有打开应用才能同步。
+     */
+    fun keepAlive(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_KEEP_ALIVE, true)
+
+    fun setKeepAlive(context: Context, on: Boolean) {
+        prefs(context).edit().putBoolean(KEY_KEEP_ALIVE, on).apply()
+        if (on) SyncService.start(context) else SyncService.stop(context)
     }
 
     /** 默认 1 小时：够及时，也不至于反复扫库。 */

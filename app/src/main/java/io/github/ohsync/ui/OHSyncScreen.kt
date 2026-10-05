@@ -16,7 +16,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -28,6 +30,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -82,6 +85,7 @@ fun OHSyncScreen() {
     var interval by remember { mutableIntStateOf(Settings.intervalMinutes(ctx)) }
     var window by remember { mutableIntStateOf(Settings.windowDays(ctx)) }
     var showLogs by remember { mutableStateOf(false) }
+    var keepAlive by remember { mutableStateOf(Settings.keepAlive(ctx)) }
 
     // 进入页面时核对一次权限（用户可能在 Health Connect 里改过），
     // 并问一次读取端是否在线。都是事件驱动，只在界面打开时各发生一次。
@@ -126,11 +130,16 @@ fun OHSyncScreen() {
             }
 
             item { StatusCard(status, onSync = { SyncEngine.requestBackfill() }) }
-            item { IntervalCard(interval, window, onInterval = {
-                interval = it; Settings.setIntervalMinutes(ctx, it)
-            }, onWindow = {
-                window = it; Settings.setWindowDays(ctx, it)
-            }) }
+            item {
+                IntervalCard(
+                    interval = interval,
+                    window = window,
+                    keepAlive = keepAlive,
+                    onInterval = { interval = it; Settings.setIntervalMinutes(ctx, it) },
+                    onWindow = { window = it; Settings.setWindowDays(ctx, it) },
+                    onKeepAlive = { keepAlive = it; Settings.setKeepAlive(ctx, it) },
+                )
+            }
             item { DataCard() }
             item { DiscardedCard() }
             item { LogCard(showLogs, logs) { showLogs = !showLogs } }
@@ -206,8 +215,10 @@ private fun StatusDot(label: String, ok: Boolean) {
 private fun IntervalCard(
     interval: Int,
     window: Int,
+    keepAlive: Boolean,
     onInterval: (Int) -> Unit,
     onWindow: (Int) -> Unit,
+    onKeepAlive: (Boolean) -> Unit,
 ) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -237,6 +248,29 @@ private fun IntervalCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )
+
+            HorizontalDivider()
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("保持后台运行", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        if (keepAlive) {
+                            "会常驻一个轻量进程并显示一条静音通知。关闭后系统不会主动" +
+                                "拉起本应用，自动同步将失效，只能打开应用时手动同步。"
+                        } else {
+                            "已关闭：自动同步不会生效，只能在本应用里手动同步。"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                }
+                Switch(checked = keepAlive, onCheckedChange = onKeepAlive)
+            }
         }
     }
 }
