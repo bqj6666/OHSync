@@ -26,20 +26,57 @@ class SyncService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    @Volatile private var watching = false
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i(TAG, "服务启动：${intent?.action ?: "(no action)"}")
-        // 闹钟与开机都会走到这里，保证下一次唤醒已经排上
         WakeReceiver.scheduleAlarm(this)
+        startIdleWatch()
         return START_STICKY
     }
 
+    /**
+     * 空闲一段时间后主动退出。
+     *
+     * 数据接口要一直可用，所以「有数据要写」时进程得活着；但没人来推数据时没必要
+     * 占着内存。空闲即退出，进程随后被系统回收（占用归零），下次有数据要推时
+     * 读取端会发广播把它唤醒。
+     *
+     * 用 stopSelf()：这样不会被 START_STICKY 拉回来（那只在系统杀进程时生效）。
+     */
+    private fun startIdleWatch() {
+        if (watching) return
+        watching = true
+        Thread {
+            while (watching) {
+                try {
+                    Thread.sleep(IDLE_CHECK_MS)
+                } catch (_: InterruptedException) {
+                    return@Thread
+                }
+                val idleFor = System.currentTimeMillis() - SyncEngine.lastActivityAt()
+                if (idleFor >= IDLE_MS) {
+                    Log.i(TAG, "空闲 ${idleFor / 1000} 秒，主动退出以释放内存")
+                    watching = false
+                    stopSelf()
+                    return@Thread
+                }
+            }
+        }.apply { isDaemon = true }.start()
+    }
+
     override fun onDestroy() {
+        watching = false
         Log.i(TAG, "服务销毁")
         super.onDestroy()
     }
 
     companion object {
         private const val TAG = "OHSyncService"
+
+        /** 空闲多久退出。留足余量，避免写入还没落盘就退出。 */
+        private const val IDLE_MS = 5 * 60_000L
+        private const val IDLE_CHECK_MS = 30_000L
 
         fun start(context: Context) {
             runCatching { context.startService(Intent(context, SyncService::class.java)) }

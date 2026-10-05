@@ -44,6 +44,16 @@ object SyncEngine {
      * 初始 false：UI 一进来不该显示「正在同步」。首次拿库时的历史回填由 Hook 侧
      * 独立判断（它不读这个标志），所以这里不需要为它置位。
      */
+    /** 最后一次同步活动的时间，服务据此判断能否空闲退出。 */
+    @Volatile private var lastActivity = System.currentTimeMillis()
+
+    fun lastActivityAt(): Long = lastActivity
+
+    /** 数据到达时刷新活动时间。 */
+    fun noteActivity() {
+        lastActivity = System.currentTimeMillis()
+    }
+
     private val _backfillRequested = MutableStateFlow(false)
     private var hc: HcClient? = null
 
@@ -62,6 +72,7 @@ object SyncEngine {
     }
 
     private suspend fun consume(batch: SyncBatch) = mutex.withLock {
+        noteActivity()
         val client = hc ?: run { log("Health Connect 不可用，丢弃 ${batch.records.size} 条"); return@withLock }
         var ok = 0L; var skipped = 0L; var failed = 0L
         val mapped = ArrayList<androidx.health.connect.client.records.Record>(batch.records.size)
@@ -91,6 +102,7 @@ object SyncEngine {
             failedCount = _status.value.failedCount + failed,
             pendingBackfill = false,
         )
+        noteActivity()
         log("批次完成：写入 $ok / 跳过 $skipped / 失败 $failed" +
             if (batch.isBackfill) "（历史回填）" else "（实时）")
     }

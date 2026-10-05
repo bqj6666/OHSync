@@ -31,7 +31,9 @@ class SyncReceiverProvider : ContentProvider() {
         val payload = values?.getAsString(COL_PAYLOAD) ?: return null
         return try {
             val records = PayloadCodec.decode(type, payload)
-            SyncEngine.get(ctx()).submit(SyncBatch(records, isBackfill = false))
+            val engine = SyncEngine.get(ctx())
+            engine.noteActivity()
+            engine.submit(SyncBatch(records, isBackfill = false))
             Log.i(TAG, "accepted ${records.size} records of $type")
             Uri.withAppendedPath(uri, "ok")
         } catch (t: Throwable) {
