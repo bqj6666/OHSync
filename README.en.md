@@ -5,8 +5,6 @@ native **Health Connect**.
 
 [中文说明](README.md)
 
-> A standalone project with no code relationship to any other project. UI uses Material 3.
-
 **Download**: [latest release](https://github.com/bqj6666/OHSync/releases/latest) ·
 [all releases](https://github.com/bqj6666/OHSync/releases)
 
