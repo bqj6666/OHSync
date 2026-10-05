@@ -34,7 +34,7 @@ object RemoteConfig {
             cached?.takeIf { now - lastFetchAt < 300_000L }?.let { return it }
         }
         if (AppContextHolder.context == null) AppContextHolder.init()
-        val ctx = AppContextHolder.context ?: return cached
+        val ctx = AppContextHolder.context ?: return if (force) null else cached
         val got = try {
             val b = ctx.contentResolver.call(
                 Uri.parse("content://$OHSYNC_PACKAGE$PROVIDER_SUFFIX"),
@@ -61,7 +61,10 @@ object RemoteConfig {
             lastFetchAt = now
             TokenHolder.pair(got.token)
         }
-        return got ?: cached
+        // force=true 表示调用方要的是「此刻主进程在不在」这个事实，
+        // 此时**不能**回退到旧缓存 —— 否则进程已经死了也会被判为就绪，
+        // 结果就是推送全部失败（踩过）。
+        return if (force) got else got ?: cached
     }
 
     /** 告诉主进程本次推送完成的时间点，下次增量只取这之后的数据。 */
