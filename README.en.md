@@ -102,6 +102,30 @@ not guessed:
 | 3 | REM | 10 segments, 119 min, 24.9% = UI 25% |
 | 4 | Light | 18 segments, 288 min, 60.4% = UI 59% |
 
+## Background operation
+
+The app runs a **lightweight foreground service** (a silent notification). This is
+required, not defensive:
+
+The reader runs inside OPPO Health's process and hands data over through this app's
+content provider. On this device the system **will not start an app that is not already
+running just because something accessed its provider** (verified against a second app
+with the same behaviour). So once the process is reclaimed, every write fails — which is
+exactly what "sync stops after I swipe the card away" looks like.
+
+A foreground service keeps the process alive after the recents card is swiped, so the
+provider stays reachable.
+
+- Measured CPU cost is negligible (about 0.36 s per hour)
+- The notification uses the lowest importance level: no sound, no vibration, no badge
+- You can turn "keep running in background" off in settings; automatic sync then stops
+  working and you can only sync manually while the app is open
+
+Note: if the process is killed by the system or by a force-stop from app info, the app
+currently **will not come back on its own** — open it once. Allowing the app in the
+vendor auto-start list and disabling battery optimisation for it makes this far more
+reliable.
+
 ## Privacy
 
 Everything stays on the device. OHSync has no network code; data flows only between two
