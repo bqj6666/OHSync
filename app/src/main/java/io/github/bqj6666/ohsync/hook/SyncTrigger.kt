@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import android.os.Build
 import android.util.Log
 import io.github.bqj6666.ohsync.core.TokenStore
+import io.github.bqj6666.ohsync.core.Ids
 
 /**
  * 主进程 → Hook 的事件通道。
