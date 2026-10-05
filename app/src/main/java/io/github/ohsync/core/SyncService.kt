@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.IBinder
 import android.util.Log
 
@@ -79,9 +80,21 @@ class SyncService : Service() {
         private const val CHANNEL_ID = "ohsync_background"
         private const val NOTIFICATION_ID = 1001
 
+        /**
+         * 启动常驻服务。
+         *
+         * 必须用 startForegroundService：它是前台服务，用 startService 起不来
+         * （服务记录会存在，但 onStartCommand 不会被调用 —— 踩过）。
+         */
         fun start(context: Context) {
-            runCatching { context.startService(Intent(context, SyncService::class.java)) }
-                .onFailure { Log.w(TAG, "启动服务失败", it) }
+            runCatching {
+                val intent = Intent(context, SyncService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            }.onFailure { Log.w(TAG, "启动服务失败", it) }
         }
 
         fun stop(context: Context) {

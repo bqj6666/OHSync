@@ -1,6 +1,6 @@
 id=io.github.ohsync
 name=OHSync
-version=1.0.5
+version=1.0.6
 author=bqj6666
 homepage=https://github.com/bqj6666/OHSync
 description=把 OPPO 健康数据同步进 Health Connect
