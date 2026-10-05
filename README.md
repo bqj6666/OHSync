@@ -5,7 +5,6 @@
 
 [English](README.en.md)
 
-> 独立项目，与任何其他项目无代码关联。UI 使用 Material 3。
 
 **下载**：[最新版本](https://github.com/bqj6666/OHSync/releases/latest) ·
 [全部版本](https://github.com/bqj6666/OHSync/releases)
