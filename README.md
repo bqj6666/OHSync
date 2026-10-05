@@ -7,6 +7,9 @@
 
 > 独立项目，与任何其他项目无代码关联。UI 使用 Material 3。
 
+**下载**：[最新版本](https://github.com/bqj6666/OHSync/releases/latest) ·
+[全部版本](https://github.com/bqj6666/OHSync/releases)
+
 ## 为什么需要它
 
 OPPO 健康国行版**完全没有** Health Connect 集成。国际版 OHealth 支持，但国行不是把

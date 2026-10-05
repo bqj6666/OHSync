@@ -7,6 +7,9 @@ native **Health Connect**.
 
 > A standalone project with no code relationship to any other project. UI uses Material 3.
 
+**Download**: [latest release](https://github.com/bqj6666/OHSync/releases/latest) ·
+[all releases](https://github.com/bqj6666/OHSync/releases)
+
 ## Why
 
 OPPO Health on Chinese firmware ships **without any Health Connect integration**.
