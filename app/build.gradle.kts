@@ -4,15 +4,15 @@ plugins {
 }
 
 android {
-    namespace = "io.github.ohsync"
+    namespace = "io.github.bqj6666.ohsync"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "io.github.ohsync"
+        applicationId = "io.github.bqj6666.ohsync"
         minSdk = 34
         targetSdk = 36
-        versionCode = 10006
-        versionName = "1.0.6"
+        versionCode = 11000
+        versionName = "1.1.0"
     }
 
     signingConfigs {

@@ -25,7 +25,7 @@ OPPO 健康国行版**完全没有** Health Connect 集成。国际版 OHealth �
 一个 APK，两个角色。
 
 ```
-com.heytap.health 进程                    io.github.ohsync 主进程
+com.heytap.health 进程                    io.github.bqj6666.ohsync 主进程
 ----------------------------------      ----------------------------------
 OHSyncHook（Xposed 注入）
   + 截获已打开的数据库  --IPC-->  SyncReceiverProvider（token 校验）

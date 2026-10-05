@@ -25,7 +25,7 @@ So OHSync reads OPPO Health's own database and writes into Health Connect on you
 One APK, two roles.
 
 ```
-com.heytap.health process                  io.github.ohsync process
+com.heytap.health process                  io.github.bqj6666.ohsync process
 ----------------------------------        ----------------------------------
 OHSyncHook (Xposed injected)
   + capture the already-open db  --IPC-->  SyncReceiverProvider (token checked)
@@ -164,6 +164,19 @@ Also note: **every app update causes Health Connect to revoke all health permiss
 ColorOS only shows that row when at least one health permission is granted. If you turn
 them all off, there is no entry point left in system settings — use the in-app
 **Grant permission** button instead.
+
+**Upgrading from 1.0.x to 1.1.0**
+
+From 1.1.0 the package name is `io.github.bqj6666.ohsync` (previously `io.github.ohsync`).
+A different package name means a different app, so:
+
+- Uninstall the old version before installing the new one (they can coexist, but there is
+  no reason to)
+- Data the old version wrote to Health Connect **stays there** but is attributed to the old
+  app; the new version writes its own copy under its own name. To remove the old data,
+  reinstall the old version and tap "clear data written by this app", or delete that source
+  in Health Connect's "Data and access"
+- Settings and pairing token do not carry over; the new version starts fresh
 
 **Sync seems to do nothing**
 

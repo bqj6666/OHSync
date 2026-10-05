@@ -2,7 +2,7 @@
 
 日期：2026-10-04
 状态：待用户复核
-包名：`io.github.ohsync`
+包名：`io.github.bqj6666.ohsync`
 
 ## 1. 目标
 
@@ -29,7 +29,7 @@ UI 组件库选择 Material 3，界面保持最简，不引入第三方 UI 套�
 单个 APK，两个角色。
 
 ```
-com.heytap.health 进程                      io.github.ohsync 主进程
+com.heytap.health 进程                      io.github.bqj6666.ohsync 主进程
 ------------------------------          -------------------------------
 OHSyncHook (Xposed 注入)                 SyncReceiverProvider (exported)
   DexKitLocator  定位实体/表   token      token 校验
@@ -111,7 +111,7 @@ OSA/鼾声事件、体测评分 PhysicalFitness。废弃项在 UI 的已废弃�
 
 ## 7. 技术栈
 
-- 包名 io.github.ohsync，独立仓库，准备公开发布到 GitHub
+- 包名 io.github.bqj6666.ohsync，独立仓库，准备公开发布到 GitHub
 - AGP 9.4.1 / Kotlin 2.4.20 / Gradle wrapper
 - compileSdk 37 / minSdk 34 / targetSdk 36（HC 要求 34+）
 - io.github.libxposed:api:102.0.0（compileOnly）
