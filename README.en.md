@@ -104,26 +104,39 @@ not guessed:
 
 ## Background operation
 
-The app runs a **lightweight foreground service** (a silent notification). This is
-required, not defensive:
+**No persistent notification.** The app uses an ordinary background service (it never
+calls `startForeground`) plus three wake-up paths:
 
-The reader runs inside OPPO Health's process and hands data over through this app's
-content provider. On this device the system **will not start an app that is not already
-running just because something accessed its provider** (verified against a second app
-with the same behaviour). So once the process is reclaimed, every write fails — which is
-exactly what "sync stops after I swipe the card away" looks like.
+| Wake source | When | Purpose |
+|---|---|---|
+| Reader broadcast | before pushing data | brings the app up in real time so the provider is reachable |
+| AlarmManager | every 15 minutes | fallback, in case nothing has been pushed for a while |
+| Boot | `BOOT_COMPLETED` | restores itself after a reboot |
 
-A foreground service keeps the process alive after the recents card is swiped, so the
-provider stays reachable.
+Why it cannot simply do nothing: the reader runs inside OPPO Health's process and hands
+data over through this app's content provider. On this device the system **will not start
+an app that is not already running just because something accessed its provider**
+(verified against a second app with the same behaviour). If the process is gone, every
+write fails — which is what "sync stops after I swipe the card away" looks like.
 
-- Measured CPU cost is negligible (about 0.36 s per hour)
-- The notification uses the lowest importance level: no sound, no vibration, no badge
-- You can turn "keep running in background" off in settings; automatic sync then stops
-  working and you can only sync manually while the app is open
+This mirrors the approach validated by a comparable project (FxxkMoondrop): ordinary
+service + AlarmManager self-wake. The difference is that real-time behaviour here is
+event-driven (the reader wakes the app), with the alarm only as a 15-minute fallback, so
+the cost is lower.
 
-Note: if the process is killed by the system or by a force-stop from app info, the app
-currently **will not come back on its own** — open it once. Allowing the app in the
-vendor auto-start list and disabling battery optimisation for it makes this far more
+Measured cost:
+
+- CPU: about 0.36 s per hour while idle (nearly all of it cross-process queries, not polling)
+- Memory: used only during sync; when there is nothing to push the service exits and the
+  process can be reclaimed
+
+"Keep running in background" can be turned off in settings. With it off there is no
+resident component, so both automatic and background sync stop working — you can only
+sync manually with the app open.
+
+Note: if you force-stop the app from app info, or the system terminates it under extreme
+memory pressure, recovery may wait for the next alarm (up to 15 minutes). Adding the app
+to the vendor auto-start list and disabling battery optimisation makes this far more
 reliable.
 
 ## Privacy
