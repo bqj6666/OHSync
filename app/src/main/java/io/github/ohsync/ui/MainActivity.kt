@@ -11,7 +11,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // 初始化引擎与配对 token：Hook 侧会通过 ContentProvider 来取
-        SyncEngine.get(this)
+        SyncEngine.get(this).restoreStatus(this)
         TokenStore.getOrCreate(this)
         setContent { MaterialTheme { OHSyncScreen() } }
     }

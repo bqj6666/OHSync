@@ -25,6 +25,14 @@ object SyncEngine {
     private val mutex = Mutex()
 
     private val _status = MutableStateFlow(SyncStatus())
+
+    /** 用持久化的值初始化「上次同步时间」，让界面重开后仍显示真实信息。 */
+    fun restoreStatus(context: Context) {
+        val at = Settings.lastSyncAt(context)
+        if (at > 0) {
+            _status.value = _status.value.copy(lastSyncAtMillis = at)
+        }
+    }
     val status: StateFlow<SyncStatus> = _status.asStateFlow()
 
     private val _logs = MutableStateFlow<List<String>>(emptyList())
@@ -39,8 +47,11 @@ object SyncEngine {
     private val _backfillRequested = MutableStateFlow(false)
     private var hc: HcClient? = null
 
+    private var appContext: Context? = null
+
     fun get(context: Context): SyncEngine {
         synchronized(this) {
+            appContext = context.applicationContext
             if (hc == null) hc = HcClient(context.applicationContext)
             return this
         }
@@ -99,7 +110,19 @@ object SyncEngine {
     fun requestBackfill() {
         _backfillRequested.value = true
         _status.value = _status.value.copy(pendingBackfill = true)
-        log("已请求历史回填，等待 Hook 进程响应")
+        // 事件驱动：直接唤醒读取端，不必等它下一轮计时
+        appContext?.let { TriggerSender.syncNow(it) }
+        log("已通知读取端开始同步")
+    }
+
+    /**
+     * 问一次读取端是否在线。
+     *
+     * 只在界面打开时调用（事件驱动）。读取端收到后会回一个 provider 调用，
+     * 由 [noteHookSeen] 记录状态。
+     */
+    fun pingReader() {
+        appContext?.let { TriggerSender.ping(it) }
     }
 
     fun pendingBackfill(): Boolean = _backfillRequested.value

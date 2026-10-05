@@ -45,6 +45,8 @@ object Settings {
 
     fun setIntervalMinutes(context: Context, minutes: Int) {
         prefs(context).edit().putInt(KEY_INTERVAL, minutes).apply()
+        // 立刻告知读取端，否则要等兜底刷新（最长 1 小时）才生效
+        TriggerSender.configChanged(context)
     }
 
     fun windowDays(context: Context): Int =
@@ -52,6 +54,7 @@ object Settings {
 
     fun setWindowDays(context: Context, days: Int) {
         prefs(context).edit().putInt(KEY_WINDOW, days).apply()
+        TriggerSender.configChanged(context)
     }
 
     fun intervalLabel(context: Context): String =

@@ -41,7 +41,7 @@ class HookCoordinator(private val xposed: XposedInterface) {
                 // 首次拿库走完整窗口，把历史补上
                 pushNow(withProbe = true, incremental = false)
             }
-            startPeriodicSync()
+            startSyncScheduler()
         }
 
         // 兜底：路 A 错过首次开库时，反复重试从 AppDatabase.INSTANCE 反射取
@@ -70,58 +70,93 @@ class HookCoordinator(private val xposed: XposedInterface) {
     }
 
     /**
-     * 周期性推送。
+     * 同步调度：事件驱动 + 本地计时，不做轮询。
      *
-     * Health Connect 没有推送/订阅写入 API，OPPO 的写库点也没有稳定的挂钩位置
-     * （DAO 是实现类、名字随版本变；SQLCipher 连接层挂钩要处理多线程重入）。
-     * 所以实时性用「定时推送 + clientRecordId 幂等覆盖」实现：每次推的是权威全量值，
-     * 重复推送只会覆盖同一条记录，不会产生重复数据。
+     *   - 用户点「立即同步」/ 改设置 → 主进程发广播 → 立即唤醒
+     *   - 自动同步 → 本地按用户设的间隔计时
      *
-     * 间隔由用户在 OHSync 里设置，每轮开始时向主进程取一次；设为「仅手动」则空转等待。
+     * 平时只在本地 wait，不产生任何跨进程调用。这一点很重要：早期版本每 5 秒
+     * 查一次配置，等于把 OHSync 主进程永久钉在内存里（实测常驻 PSS 约 55 MB）。
+     *
+     * 另留一个低频兜底刷新（[CONFIG_REFRESH_MS]），防止广播被省电策略丢弃。
      */
-    private fun startPeriodicSync() {
-        if (periodicStarted) return
-        periodicStarted = true
+    private fun startSyncScheduler() {
+        if (schedulerStarted) return
+        schedulerStarted = true
+
+        val ctx = AppContextHolder.context
+        if (ctx == null) {
+            Log.w(TAG, "没有 Context，事件通道未注册，只能靠本地计时")
+        } else {
+            SyncTrigger.register(
+                ctx,
+                onSyncNow = { manualRequest = true; configDirty = true; wake() },
+                onConfigChanged = { configDirty = true; wake() },
+                onPing = { RemoteConfig.ping() },
+            )
+        }
+
         Thread {
             var lastPush = 0L
+            var cfg: HookConfig? = null
+            var cfgAt = 0L
             while (true) {
                 try {
-                    // 5 秒一轮：只做一次很轻的跨进程查询，用来及时响应用户点的「立即同步」。
-                    // 真正的数据推送仍按用户设置的间隔走，不会因此变频繁。
-                    Thread.sleep(POLL_MS)
-                    val cfg = RemoteConfig.fetch(force = true) ?: continue
+                    val now = System.currentTimeMillis()
+                    val stale = cfg == null || now - cfgAt >= CONFIG_REFRESH_MS
+                    if (stale || configDirty) {
+                        RemoteConfig.fetch(force = true)?.let {
+                            cfg = it
+                            cfgAt = now
+                            configDirty = false
+                        }
+                    }
 
-                    val manual = cfg.backfillRequested
-                    val minutes = cfg.intervalMinutes
-                    val due = minutes > 0 &&
-                        System.currentTimeMillis() - lastPush >= minutes * 60_000L
+                    val manual = manualRequest
+                    val minutes = cfg?.intervalMinutes ?: 0
+                    val due = minutes > 0 && now - lastPush >= minutes * 60_000L
 
                     if (manual || due) {
-                        if (!reader.isReady()) {
+                        if (reader.isReady()) {
+                            pushNow(withProbe = manual, incremental = !manual)
+                            lastPush = System.currentTimeMillis()
+                            manualRequest = false
+                        } else {
                             Log.w(TAG, "数据库未就绪，稍后再试")
-                            continue
                         }
-                        pushNow(withProbe = manual, incremental = !manual)
-                        lastPush = System.currentTimeMillis()
                     }
+                    waitForEvent(TICK_MS)
                 } catch (t: Throwable) {
-                    Log.e(TAG, "周期推送异常", t)
-                    try {
-                        Thread.sleep(60_000L)
-                    } catch (_: InterruptedException) {
-                    }
+                    Log.e(TAG, "同步调度异常", t)
+                    waitForEvent(60_000L)
                 }
             }
         }.apply { isDaemon = true }.start()
-        Log.i(TAG, "推送循环已启动（间隔由主进程下发）")
+        Log.i(TAG, "同步调度已启动（事件驱动，本地计时）")
     }
 
-    private var periodicStarted = false
+    private var schedulerStarted = false
+
+    /** 用户在应用里点了「立即同步」。 */
+    @Volatile private var manualRequest = false
+
+    /** 配置有变化，下一轮重新取。 */
+    @Volatile private var configDirty = false
+
+    private fun wake() = synchronized(wakeLock) { wakeLock.notifyAll() }
+
+    private fun waitForEvent(ms: Long) {
+        synchronized(wakeLock) {
+            try {
+                wakeLock.wait(ms)
+            } catch (_: InterruptedException) {
+            }
+        }
+    }
+
+    private val wakeLock = Object()
 
     /** UI 点「同步历史数据」时也会走这里。 */
-    /** 用户点「立即同步」：走完整窗口。 */
-    fun pushFullHistory() = pushNow(withProbe = true, incremental = false)
-
     /**
      * @param withProbe   顺带跑一次证据探针（只在手动同步时，探针输出很啰嗦）
      * @param incremental 只取上次同步之后的新数据；手动同步传 false 走完整窗口
@@ -145,7 +180,10 @@ class HookCoordinator(private val xposed: XposedInterface) {
     companion object {
         private const val TAG = "OHSyncHook"
 
-        /** 轮询间隔。只查一次配置，成本极低（一次 binder 调用）。 */
-        private const val POLL_MS = 5_000L
+        /** 本地计时粒度。只 sleep，不做任何 IPC。 */
+        private const val TICK_MS = 30_000L
+
+        /** 兜底刷新配置的间隔（正常情况下由事件驱动）。 */
+        private const val CONFIG_REFRESH_MS = 3_600_000L
     }
 }

@@ -83,8 +83,12 @@ fun OHSyncScreen() {
     var window by remember { mutableIntStateOf(Settings.windowDays(ctx)) }
     var showLogs by remember { mutableStateOf(false) }
 
-    // 每次进入页面都重新核对一次权限（用户可能在 Health Connect 里改过）
-    LaunchedEffect(Unit) { SyncEngine.notePermission(hc.isWriteGranted()) }
+    // 进入页面时核对一次权限（用户可能在 Health Connect 里改过），
+    // 并问一次读取端是否在线。都是事件驱动，只在界面打开时各发生一次。
+    LaunchedEffect(Unit) {
+        SyncEngine.notePermission(hc.isWriteGranted())
+        SyncEngine.pingReader()
+    }
 
     Scaffold(topBar = { TopAppBar(title = { Text("OHSync") }) }) { pad ->
         LazyColumn(
@@ -162,8 +166,8 @@ private fun StatusCard(status: io.github.ohsync.core.SyncStatus, onSync: () -> U
 
             if (!status.hookConnected) {
                 Text(
-                    "还没读上数据。请确认：LSPosed 里已启用本模块、作用域勾选了「OPPO 健康」，" +
-                        "然后打开一次 OPPO 健康（应用需要它先把数据库准备好）。",
+                    "读取端未响应。请确认：LSPosed 里已启用本模块、作用域勾选了「OPPO 健康」，" +
+                        "然后打开一次 OPPO 健康。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )

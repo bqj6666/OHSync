@@ -77,4 +77,20 @@ object RemoteConfig {
         }
     }
 
+    /**
+     * 回应应用界面的在线确认。
+     *
+     * 应用打开时发一次广播问「读取端在吗」，这里回一个 provider 调用。
+     * 事件驱动，只在用户看界面时发生一次，不是轮询。
+     */
+    fun ping() {
+        if (AppContextHolder.context == null) AppContextHolder.init()
+        val ctx = AppContextHolder.context ?: return
+        runCatching {
+            ctx.contentResolver.call(
+                Uri.parse("content://$OHSYNC_PACKAGE$PROVIDER_SUFFIX"),
+                "ping", TokenHolder.token, null,
+            )
+        }
+    }
 }
