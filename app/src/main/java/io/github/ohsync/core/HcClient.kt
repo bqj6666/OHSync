@@ -44,7 +44,7 @@ class HcClient(private val context: Context) {
         Log.i(
             TAG,
             "写权限共 ${requiredPermissions.size} 条，未授予 ${missing.size} 条" +
-                if (missing.isEmpty()) "" else "：$missing",
+                if (missing.isEmpty()) "" else "（前 5 条：${missing.take(5)}）",
         )
     }
 
