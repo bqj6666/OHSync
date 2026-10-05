@@ -1,6 +1,6 @@
 id=io.github.ohsync
 name=OHSync
-version=0.1.0
+version=1.0.0
 author=bqj6666
 homepage=https://github.com/bqj6666/OHSync
 description=Sync OPPO Health data into Android Health Connect

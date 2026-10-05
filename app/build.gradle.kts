@@ -11,8 +11,21 @@ android {
         applicationId = "io.github.ohsync"
         minSdk = 34
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 10000
+        versionName = "1.0.0"
+    }
+
+    signingConfigs {
+        create("release") {
+            // 只在有环境变量时生效：本地无密钥也能构建 debug
+            val ksPath = System.getenv("OHSYNC_KEYSTORE_PATH")
+            if (!ksPath.isNullOrBlank()) {
+                storeFile = file(ksPath)
+                storePassword = System.getenv("OHSYNC_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("OHSYNC_KEY_ALIAS")
+                keyPassword = System.getenv("OHSYNC_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -20,6 +33,7 @@ android {
             isMinifyEnabled = false
         }
         release {
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
