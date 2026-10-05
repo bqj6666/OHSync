@@ -1,0 +1,190 @@
+name: Sync module release to modules.lsposed
+
+# 触发源收敛为「release: published」+ 手工 dispatch。
+#
+# 不用 push: tags —— 发布 Release 时若 tag 不存在会被顺手创建，那又产生一次 tag push，
+# 于是同一次发版会跑两遍；两个 run 并发在「删旧 asset / 传新 APK」之间互相踩。
+# release: published 只在 Release 真正发布时触发一次，语义正好是「该同步了」，
+# 且此时主仓 APK 已挂好。编辑已发布的 Release 不会重跑（只有 draft→published 才触发）。
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '主仓的 release tag，如 v1.1.0'
+        required: true
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    # 同一个 tag 只允许一个 mirror run 在跑：避免后到的插进前一个
+    # 「删完旧 asset、还没传完」的窗口。
+    # 必须按 tag 分组：release 事件与 dispatch 事件的 github.ref 都是默认分支，
+    # 按 ref 分组会让两个互不相关的 tag 互相排队。
+    concurrency:
+      group: mirror-${{ github.event.release.tag_name || github.event.inputs.tag }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      MIRROR_REPO: Xposed-Modules-Repo/io.github.bqj6666.ohsync
+      MODULE_PREFIX: OHSync
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve tags
+        id: tag
+        run: |
+          # release 事件的 GITHUB_REF_NAME 是默认分支，不能直接用，
+          # 必须先取 release.tag_name
+          SRC_TAG="${{ github.event.inputs.tag }}"
+          [ -z "$SRC_TAG" ] && SRC_TAG="${{ github.event.release.tag_name }}"
+          [ -z "$SRC_TAG" ] && SRC_TAG="${GITHUB_REF_NAME}"
+          echo "src_tag=${SRC_TAG}" >> "$GITHUB_OUTPUT"
+
+          # 镜像仓的 tag 规范是 <versionCode>-<versionName>。
+          # 从源码读出来而不是手工传，避免两边不一致或写错。
+          VCODE=$(grep -oP 'versionCode\s*=\s*\K[0-9]+' app/build.gradle.kts | head -1)
+          VNAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
+          if [ -z "$VCODE" ] || [ -z "$VNAME" ]; then
+            echo "无法从 app/build.gradle.kts 解析版本号" >&2
+            exit 1
+          fi
+          echo "mirror_tag=${VCODE}-${VNAME}" >> "$GITHUB_OUTPUT"
+
+          # 版本名里带 alpha/beta/rc 视为预发行
+          if echo "$VNAME" | grep -Eqi 'alpha|beta|rc'; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "src=$SRC_TAG mirror=${VCODE}-${VNAME} versionName=${VNAME}"
+
+      - name: Download APK from main repo release
+        id: download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.tag.outputs.src_tag }}"
+          mkdir -p apk
+          gh release download "$TAG" --pattern '*.apk' --dir apk --clobber || true
+          ls -la apk/ || true
+          if ls apk/*.apk >/dev/null 2>&1; then
+            echo "has_apk=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_apk=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sync meta files to mirror main
+        env:
+          MIRROR_TOKEN: ${{ secrets.MIRROR_TOKEN }}
+        run: |
+          git config --global user.name "ohsync-sync"
+          git config --global user.email "actions@users.noreply.github.com"
+          rm -rf mirrorclone
+          git clone --depth 1 "https://x-access-token:${MIRROR_TOKEN}@github.com/${MIRROR_REPO}.git" mirrorclone
+          cd mirrorclone
+          # 镜像仓首页用 docs/module/README.md（模块索引版：安装说明 + 截图 + 常见问题）
+          cp ../docs/module/README.md ./README.md 2>/dev/null || cp ../README.md ./README.md
+          cp ../SUMMARY ../SCOPE ../SOURCE_URL ../LICENSE . 2>/dev/null || true
+          mkdir -p screenshots
+          cp -r ../screenshots/. screenshots/ 2>/dev/null || true
+          git add -A
+          git commit -m "sync meta files" 2>/dev/null || echo "no meta changes"
+          git push origin HEAD:main
+          cd ..
+
+      - name: Create mirror release + upload APK
+        if: steps.download.outputs.has_apk == 'true'
+        env:
+          MIRROR_TOKEN: ${{ secrets.MIRROR_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ steps.tag.outputs.prerelease }}
+          MIRROR_TAG: ${{ steps.tag.outputs.mirror_tag }}
+          SRC_TAG: ${{ steps.tag.outputs.src_tag }}
+          # 手工 dispatch 补同步历史版本时置 1：允许删掉重建
+          ALLOW_REPUBLISH: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
+        run: |
+          set -e
+          REPO="${MIRROR_REPO}"
+          AUTH="Authorization: Bearer ${MIRROR_TOKEN}"
+          ACCEPT="Accept: application/vnd.github+json"
+          VNAME="${MODULE_PREFIX}-${MIRROR_TAG}.apk"
+          API="https://api.github.com/repos/${REPO}"
+          echo "镜像 tag=${MIRROR_TAG} asset=${VNAME} prerelease=${PRERELEASE}"
+
+          get_id() {
+            curl -sS -H "$AUTH" -H "$ACCEPT" "$API/releases/tags/${MIRROR_TAG}" \
+              | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('id','') if isinstance(d,dict) else '')"
+          }
+          get_pre() {
+            curl -sS -H "$AUTH" -H "$ACCEPT" "$API/releases/tags/${MIRROR_TAG}" \
+              | python3 -c "import sys,json;d=json.load(sys.stdin);print(str(d.get('prerelease','')).lower() if isinstance(d,dict) else '')"
+          }
+          EXIST=$(get_id); CURR_PRE=$(get_pre)
+
+          REL_ID=""
+          if [ -n "$EXIST" ] && [ "$EXIST" != "None" ]; then
+            echo "镜像仓已有 release id=${EXIST} (prerelease=${CURR_PRE})"
+            # GitHub 的 /releases/latest 取 published_at 最新的那个，而任何 PATCH 都会把
+            # published_at 刷成当前时间。所以：
+            #   预发布状态不一致 → 删除重建（否则 latest 被旧状态锁死）
+            #   手工补同步      → 删除重建（补老版本时必须，否则它会被刷成 latest）
+            #   状态一致        → 什么都不做（避免无谓刷新 published_at 劫持 latest）
+            if [ "$PRERELEASE" != "$CURR_PRE" ] || [ "${ALLOW_REPUBLISH:-0}" = "1" ]; then
+              echo "删除重建 (${MIRROR_TAG})"
+              curl -sS -X DELETE -H "$AUTH" -H "$ACCEPT" "$API/releases/${EXIST}" >/dev/null || true
+            else
+              echo "状态一致，跳过创建"
+              REL_ID="${EXIST}"
+            fi
+          fi
+
+          if [ -z "$REL_ID" ]; then
+            echo "新建 release ${MIRROR_TAG}"
+            # 说明取主仓 Release 的正文，两处保持一致
+            BODY=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${SRC_TAG}" --jq '.body' 2>/dev/null || echo "")
+            MT="$MIRROR_TAG" PRE="$PRERELEASE" BODY="$BODY" python3 -c "
+          import json, os
+          print(json.dumps({
+              'tag_name': os.environ['MT'],
+              'name': os.environ['MT'],
+              'body': os.environ.get('BODY', ''),
+              'prerelease': os.environ['PRE'] == 'true',
+          }, ensure_ascii=False))
+          " > payload.json
+            curl -sS -X POST -H "$AUTH" -H "$ACCEPT" -H "Content-Type: application/json" \
+              "$API/releases" --data-binary @payload.json >/dev/null || true
+            REL_ID=$(get_id)
+          fi
+          echo "release_id=${REL_ID}"
+
+          # 删掉旧的同名 / 旧命名 asset，避免上传时 422
+          curl -sS -H "$AUTH" -H "$ACCEPT" "$API/releases/${REL_ID}/assets" > assets.json || true
+          VNAME="$VNAME" PREFIX="${MODULE_PREFIX}" python3 -c "
+          import json, os
+          vname = os.environ['VNAME']; prefix = os.environ['PREFIX']
+          try:
+              data = json.load(open('assets.json'))
+          except Exception:
+              data = []
+          for a in (data if isinstance(data, list) else []):
+              n = a.get('name') or ''
+              if n == vname or n == 'app-release.apk' or n.startswith(prefix + '-ci-'):
+                  print(a['id'])
+          " | while read -r AID; do
+                echo "删除旧 asset ${AID}"
+                curl -sS -X DELETE -H "$AUTH" "$API/releases/assets/${AID}" >/dev/null || true
+              done
+
+          for f in apk/*.apk; do
+            [ -e "$f" ] || continue
+            echo "上传 ${VNAME}"
+            curl -sS -X POST -H "$AUTH" -H "$ACCEPT" \
+              -H "Content-Type: application/vnd.android.package-archive" \
+              --data-binary @"$f" \
+              "https://uploads.github.com/repos/${REPO}/releases/${REL_ID}/assets?name=${VNAME}"
+            echo
+          done
