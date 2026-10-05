@@ -104,40 +104,41 @@ not guessed:
 
 ## Background operation
 
-**No persistent notification.** The app uses an ordinary background service (it never
-calls `startForeground`) plus three wake-up paths:
+The app keeps a **foreground service** alive (with a silent notification). That is the
+conclusion of direct measurement on this device, not defensive programming.
 
-| Wake source | When | Purpose |
-|---|---|---|
-| Reader broadcast | before pushing data | brings the app up in real time so the provider is reachable |
-| AlarmManager | every 15 minutes | fallback, in case nothing has been pushed for a while |
-| Boot | `BOOT_COMPLETED` | restores itself after a reboot |
+The reader runs inside OPPO Health's process and hands data over through this app's
+content provider. On this device the system **will not start an app that is not already
+running just because something accessed its provider** (verified against a second app
+with identical behaviour). If the process is gone, every write fails — which is what
+"sync stops after I swipe the card away" looks like.
 
-Why it cannot simply do nothing: the reader runs inside OPPO Health's process and hands
-data over through this app's content provider. On this device the system **will not start
-an app that is not already running just because something accessed its provider**
-(verified against a second app with the same behaviour). If the process is gone, every
-write fails — which is what "sync stops after I swipe the card away" looks like.
+Three approaches were measured:
 
-This mirrors the approach validated by a comparable project (FxxkMoondrop): ordinary
-service + AlarmManager self-wake. The difference is that real-time behaviour here is
-event-driven (the reader wakes the app), with the alarm only as a 15-minute fallback, so
-the cost is lower.
+| Approach | Result |
+|---|---|
+| Ordinary service + reader wake-up broadcast | broadcast is enqueued by the system but **never runs**; process does not start |
+| Ordinary service + AlarmManager fallback | alarm fires, **nothing happens**; process count stays 0 |
+| **Foreground service** | process survives; swiping the card does not affect it ✅ |
+
+Broadcasts and alarms cannot start a cached app — that is an Android restriction, not an
+implementation issue. A foreground service is therefore the only reliable option, at the
+cost of one notification. It uses the lowest importance level: no sound, no vibration,
+no badge.
+
+For comparison: a similar project appears to "stay alive without a notification" because
+its functionality runs inside system processes (Xposed hooks in GMS / Settings) — its own
+app process is often not running either. OHSync cannot copy that, because its writes must
+come from its own process (Health Connect validates permissions by calling UID).
 
 Measured cost:
 
-- CPU: about 0.36 s per hour while idle (nearly all of it cross-process queries, not polling)
-- Memory: used only during sync; when there is nothing to push the service exits and the
-  process can be reclaimed
+- CPU: about 1.8 s per hour while idle
+- Memory: about 59 MB (Java heap 12 MB / native heap 15 MB / code 29 MB)
 
 "Keep running in background" can be turned off in settings. With it off there is no
-resident component, so both automatic and background sync stop working — you can only
-sync manually with the app open.
-
-Note: if you force-stop the app from app info, or the system terminates it under extreme
-memory pressure, recovery may wait for the next alarm (up to 15 minutes). Adding the app
-to the vendor auto-start list and disabling battery optimisation makes this far more
-reliable.
+resident component and automatic sync stops working — you can only sync manually while
+the app is open, which also saves the footprint above.
 
 ## Privacy
 

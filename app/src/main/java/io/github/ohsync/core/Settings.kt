@@ -90,13 +90,7 @@ object Settings {
 
     fun setKeepAlive(context: Context, on: Boolean) {
         prefs(context).edit().putBoolean(KEY_KEEP_ALIVE, on).apply()
-        if (on) {
-            SyncService.start(context)
-            WakeReceiver.scheduleAlarm(context)
-        } else {
-            WakeReceiver.cancelAlarm(context)
-            SyncService.stop(context)
-        }
+        if (on) SyncService.start(context) else SyncService.stop(context)
     }
 
     /** 默认 1 小时：够及时，也不至于反复扫库。 */
