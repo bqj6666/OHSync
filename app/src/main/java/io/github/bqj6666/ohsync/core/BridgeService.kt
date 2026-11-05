@@ -15,10 +15,12 @@ import android.util.Log
 /**
  * 与 [SyncReceiverProvider] 等价的第二条通道，走「显式组件绑定」。
  *
- * 为什么要多这一条：HMA 这类模块会把被隐藏的包从宿主应用的 PackageManager
- * 视图里抹掉，于是 ContentResolver 解析 provider 直接失败（Unknown authority），
- * 推送全废。而 bindService 用的是显式 ComponentName，AMS 直接按组件名查服务表，
- * 不经过「这个包对调用方可见吗」这一层，所以隐藏状态下仍然能连上。
+ * 为什么要多这一条：provider 被挡时（Unknown authority）还有一条路可试。
+ *
+ * 但实测（2026-11-05）在 HMA 彻底隐藏 OHSync 的场景下，**这条通道也连不上**：
+ * 隐藏类模块把包从 PackageManager 层整个抹掉，显式组件名一样解析失败。所以它只是
+ * 兜底，不是「隐藏可用」的保证 —— 真要隐藏状态下工作，必须让 OHSync 对
+ * com.heytap.health 可见（README 已写明）。
  *
  * 协议：what=1 走 call()，what=2 走 insert()，回复放 msg.replyTo。
  */

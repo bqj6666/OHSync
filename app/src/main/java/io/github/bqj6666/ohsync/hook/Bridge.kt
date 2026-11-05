@@ -17,10 +17,14 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
 /**
- * 显式组件绑定版通道（provider 被隐藏时的备胎）。
+ * 显式组件绑定版通道（provider 不通时的备胎）。
  *
- * 与 RemoteConfig / Pusher 里走 provider 的路径语义一致，只是换了传输：
- * bindService 用 ComponentName，不依赖「OHSync 这个包对 OPPO 健康可见」。
+ * 与 RemoteConfig / Pusher 里走 provider 的路径语义一致，只是换了传输。
+ *
+ * 注意（2026-11-05 实测）：**在 HMA 彻底隐藏 OHSync 的情况下，这条路同样不通** ——
+ * 隐藏类模块是在 PackageManager 层面把包整个抹掉，bindService 解析组件名一样失败。
+ * 保留它只是为了应对「provider 单点故障」这类更轻的问题；真正要让 OHSync 在隐藏
+ * 状态下可用，只能让 OHSync 对 com.heytap.health 可见（见 README）。
  */
 object Bridge {
 

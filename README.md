@@ -59,6 +59,17 @@ OPPO 健康自己打开的 `SupportSQLiteDatabase` 实例复用。这样不引�
 4. 打开一次 OPPO 健康，让它把数据库准备好
 5. 回到 OHSync，点「立即同步」
 
+> **⚠️ 用了「隐藏应用」类模块的话，必须让 OHSync 对 OPPO 健康可见**
+>
+> HMA、Hide My Applist 这类模块如果把 OHSync 加进了「对 OPPO 健康隐藏」的名单，
+> 注入在 OPPO 健康进程里的读取端就**看不到本应用**：解析 provider 直接抛
+> `Unknown authority`，数据读得出来却一条也送不出去。应用里会显示
+> 「读取端正常、累计写入 0 条、失败 N 条」——这个组合基本就是被隐藏了。
+>
+> 实测**显式组件绑定（`bindService` + ComponentName）也绕不过去**，这类模块在
+> PackageManager 层面做得足够彻底。唯一的解法是把 OHSync 从对 `com.heytap.health`
+> 的隐藏名单里移出去（或把 OPPO 健康加进白名单）。
+
 ## 同步设置
 
 | 设置 | 说明 |
@@ -151,6 +162,13 @@ Health Connect 的授权流程要求应用声明一个「用途说明」页面
 
 ColorOS 只在「至少已授权一项健康权限」时才显示该行。若你把权限全部关掉，系统设置里
 就没有再打开的入口了 —— 所以请用 OHSync 内的「去授权」按钮重新授权。
+
+**「读取端正常」，但「累计写入 0 条、失败 N 条」**
+
+被「隐藏应用」类模块挡了。读取端确实拿到了数据库（所以那一项是绿的），但它调用本
+应用的数据接口时被 PackageManager 过滤掉，抛 `Unknown authority`，于是每条记录都判
+失败。去 HMA / Hide My Applist 里把 OHSync 从「对 `com.heytap.health` 隐藏」的名单
+移除即可。显式组件绑定同样无效，别指望绕过（实测）。
 
 **同步一直没反应**
 

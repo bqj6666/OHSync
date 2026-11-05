@@ -60,6 +60,19 @@ Steps:
 4. Open OPPO Health once so it prepares its database
 5. Back in OHSync, tap **Sync now**
 
+> **⚠️ If you use an app-hiding module, OHSync must stay visible to OPPO Health**
+>
+> If HMA, Hide My Applist or a similar module puts OHSync on the "hide from OPPO
+> Health" list, the reader injected into the OPPO Health process **cannot see this
+> app**: resolving the provider throws `Unknown authority`, so data is read but
+> nothing ever gets delivered. The app then shows *reader OK, 0 written, N failed*
+> — that combination almost always means it is being hidden.
+>
+> **Explicit component binding (`bindService` + ComponentName) does not work
+> around this either** — these modules filter thoroughly at the PackageManager
+> level. The only fix is to remove OHSync from the hide list for
+> `com.heytap.health` (or whitelist OPPO Health).
+
 ## Sync settings
 
 | Setting | Options |
@@ -177,6 +190,14 @@ A different package name means a different app, so:
   reinstall the old version and tap "clear data written by this app", or delete that source
   in Health Connect's "Data and access"
 - Settings and pairing token do not carry over; the new version starts fresh
+
+**"Reader OK" but "0 written, N failed"**
+
+An app-hiding module is in the way. The reader did get the database (hence the
+green light), but calls into this app are filtered out by PackageManager and throw
+`Unknown authority`, so every record is counted as failed. Remove OHSync from the
+"hide from `com.heytap.health`" list in HMA / Hide My Applist. Explicit component
+binding does not help either (measured).
 
 **Sync seems to do nothing**
 
