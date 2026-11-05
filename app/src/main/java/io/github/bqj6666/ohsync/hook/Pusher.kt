@@ -124,15 +124,22 @@ object Pusher {
                 values,
             )
             if (uri == null) {
-                Log.e(TAG, "推送 $type 被主进程拒绝（${records.size} 条，${payload.length} 字节）")
-                false
+                // provider 通道被挡（HMA 隐藏等），改用显式组件绑定
+                val ok = Bridge.insert(ctx, TokenHolder.token, type, payload)
+                if (!ok) Log.e(TAG, "推送 $type 失败（provider 与 Bridge 都不通，${records.size} 条，${payload.length} 字节）")
+                ok
             } else {
                 Log.i(TAG, "发送 $type：${records.size} 条，${payload.length} 字节")
                 true
             }
         } catch (t: Throwable) {
-            Log.e(TAG, "推送 $type 失败", t)
-            false
+            val ok = try {
+                Bridge.insert(ctx, TokenHolder.token, type, PayloadCodec.encode(records))
+            } catch (e: Throwable) {
+                false
+            }
+            if (!ok) Log.e(TAG, "推送 $type 失败", t)
+            ok
         }
     }
 }

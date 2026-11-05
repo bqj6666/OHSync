@@ -103,6 +103,11 @@
             </intent-filter>
         </receiver>
 
+        <!-- 显式组件绑定通道：provider 被 HMA 之类隐藏时的备胎 -->
+        <service
+            android:name=".core.BridgeService"
+            android:exported="true" />
+
         <provider
             android:name=".core.SyncReceiverProvider"
             android:authorities="${applicationId}.sync"

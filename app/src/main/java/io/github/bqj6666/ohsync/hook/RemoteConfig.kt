@@ -42,22 +42,21 @@ object RemoteConfig {
                 Uri.parse("content://$OHSYNC_PACKAGE$PROVIDER_SUFFIX"),
                 "config", null, null,
             )
-            val token = b?.getString("token")
-            if (token.isNullOrEmpty()) {
+            parse(b)
+        } catch (t: Throwable) {
+            // provider 可能被 HMA 之类藏掉（Unknown authority）：退回显式组件绑定
+            val alt = try {
+                Bridge.call(ctx, "config", null)
+            } catch (e: Throwable) {
+                null
+            }
+            if (alt == null) {
+                Log.w(TAG, "取配置失败（provider 与 Bridge 都不通）", t)
+                diagnose(ctx)
                 null
             } else {
-                HookConfig(
-                    token = token,
-                    intervalMinutes = b.getInt("intervalMinutes", 60),
-                    windowDays = b.getInt("windowDays", 90),
-                    backfillRequested = b.getBoolean("backfillRequested", false),
-                    lastSyncAt = b.getLong("lastSyncAt", 0L),
-                )
+                parse(alt)
             }
-        } catch (t: Throwable) {
-            Log.w(TAG, "取配置失败（主进程可能未启动）", t)
-            diagnose(ctx)
-            null
         }
         if (got != null) {
             cached = got
@@ -68,6 +67,18 @@ object RemoteConfig {
         // 此时**不能**回退到旧缓存 —— 否则进程已经死了也会被判为就绪，
         // 结果就是推送全部失败（踩过）。
         return if (force) got else got ?: cached
+    }
+
+    private fun parse(b: android.os.Bundle?): HookConfig? {
+        val token = b?.getString("token")
+        if (token.isNullOrEmpty()) return null
+        return HookConfig(
+            token = token,
+            intervalMinutes = b.getInt("intervalMinutes", 60),
+            windowDays = b.getInt("windowDays", 90),
+            backfillRequested = b.getBoolean("backfillRequested", false),
+            lastSyncAt = b.getLong("lastSyncAt", 0L),
+        )
     }
 
     @Volatile private var diagnosed = false
