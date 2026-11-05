@@ -81,12 +81,26 @@ class DbAccess(private val xposed: XposedInterface) {
     private fun tryTriggerOpen(appDb: Class<*>): Boolean {
         if (AppContextHolder.context == null) AppContextHolder.init()
         val ctx = AppContextHolder.context ?: return false
-        return runCatching {
-            val m = appDb.getDeclaredMethod("getInstance", android.content.Context::class.java)
-            m.isAccessible = true
-            val created = m.invoke(null, ctx)
-            created != null
-        }.onFailure { Log.w(TAG, "主动开库失败", it) }.getOrDefault(false)
+        // 名字会变（6.10.13 的 getInstance 叫 G）：找任意「静态 + 返回 AppDatabase + 单 Context」的方法。
+        // 逐个直调，不做可变参数展开。
+        for (m in appDb.declaredMethods) {
+            if (!java.lang.reflect.Modifier.isStatic(m.modifiers)) continue
+            if (!appDb.isAssignableFrom(m.returnType)) continue
+            val ps = m.parameterTypes
+            if (ps.size != 1 || !ps[0].isAssignableFrom(ctx.javaClass)) continue
+            val created = try {
+                m.isAccessible = true
+                m.invoke(null, ctx)
+            } catch (t: Throwable) {
+                Log.w(TAG, "主动开库 ${m.name} 失败", t)
+                null
+            }
+            if (created != null) {
+                Log.i(TAG, "已主动开库：${m.name}")
+                return true
+            }
+        }
+        return false
     }
 
     private fun tryReflection(classLoader: ClassLoader, attempt: Int) {
