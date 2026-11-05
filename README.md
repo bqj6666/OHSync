@@ -35,7 +35,7 @@ OHSyncHook（Xposed 注入）
 
 两点说明：
 
-**读取在目标进程内完成。** OHSync 不复制也不解密那个 138 MB 的数据库，而是截获
+**读取在目标进程内完成。** OHSync 不复制也不解密那个数据库，而是截获
 OPPO 健康自己打开的 `SupportSQLiteDatabase` 实例复用。这样不引入额外的 SQLCipher
 依赖、不自己处理口令，也不会与它进程里已加载的 `libsqlcipher.so` 冲突。
 
