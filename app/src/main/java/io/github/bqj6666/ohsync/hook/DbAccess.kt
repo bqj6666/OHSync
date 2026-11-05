@@ -88,7 +88,7 @@ class DbAccess(private val xposed: XposedInterface) {
             val created = runCatching {
                 m.isAccessible = true
                 m.invoke(null, ctx)
-            }.onFailure { Log.w(TAG, "主动开库失败：${m.name}", it) }.getOrNull()
+            }.getOrNull()
             if (created != null) {
                 Log.i(TAG, "已主动触发 OPPO 数据库初始化（${m.name}）")
                 return true
@@ -125,10 +125,12 @@ class DbAccess(private val xposed: XposedInterface) {
                 if (params[0].isAssignableFrom(ctx.javaClass)) args[0] = ctx else ok = false
             }
             if (!ok) continue
+            // 不打印堆栈：G() 依赖 App 自己的初始化器，初始化完成前必然 NPE，
+            // 4 个进程 × 每 3 秒一次会把 logcat 刷满
             val v = runCatching {
                 m.isAccessible = true
                 m.invoke(null, *args)
-            }.onFailure { Log.w(TAG, "路 B：调用 ${m.name} 失败", it) }.getOrNull()
+            }.getOrNull()
             if (v != null) {
                 Log.i(TAG, "路 B：静态方法 ${m.name} 命中")
                 return v
@@ -152,7 +154,9 @@ class DbAccess(private val xposed: XposedInterface) {
             if (attempt == 1 || attempt % 10 == 1) {
                 Log.i(TAG, "路 B 第 $attempt 次：实例为空，主动触发开库")
             }
-            if (ctx != null) triggerOpen(appDb, ctx)
+            // 主动开库依赖 App 自己的初始化器（6.10.13 起 G() 内部要它），初始化前必 NPE；
+            // 降到每 20 轮（约 1 分钟）试一次，失败静默，主要仍靠 App 自己开库后字段命中
+            if (ctx != null && attempt % 20 == 1) triggerOpen(appDb, ctx)
             return
         }
         // Room 的 RoomDatabase.getOpenHelper() -> SupportSQLiteOpenHelper
@@ -182,7 +186,7 @@ class DbAccess(private val xposed: XposedInterface) {
         private const val TAG = "OHSyncDb"
         private const val APP_DATABASE = "com.heytap.databaseengineservice.db.AppDatabase"
         private const val RETRY_MS = 3000L
-        private const val MAX_TRIES = 200
+        private const val MAX_TRIES = 1200
 
         private val DB_GETTERS = setOf("getReadableDatabase", "getWritableDatabase")
 
