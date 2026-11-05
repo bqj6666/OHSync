@@ -53,10 +53,23 @@ jobs:
           fi
           ./gradlew :app:assembleRelease --no-daemon
 
+      # 用 CHANGELOG.md 里对应版本的段落当发布说明，而不是自动拼提交标题
+      - name: Extract changelog
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          awk -v h="## $V" 'index($0,h)==1 {f=1; next} /^## / {f=0} f' CHANGELOG.md \
+            | sed -e 's/^[[:space:]]*$//' > release_notes.md
+          if [ ! -s release_notes.md ]; then
+            echo "CHANGELOG 里没有 $V 的段落，发布说明留空" > release_notes.md
+          fi
+          cat release_notes.md
+
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: app/build/outputs/apk/release/*.apk
-          generate_release_notes: true
+          body_path: release_notes.md
+          generate_release_notes: false
           name: OHSync ${{ github.ref_name }}

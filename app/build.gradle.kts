@@ -11,8 +11,8 @@ android {
         applicationId = "io.github.bqj6666.ohsync"
         minSdk = 34
         targetSdk = 36
-        versionCode = 12000
-        versionName = "1.2.0"
+        versionCode = 12001
+        versionName = "1.2.1"
     }
 
     signingConfigs {
