@@ -92,7 +92,10 @@ class DbAccess(private val xposed: XposedInterface) {
                 m.isAccessible = true
                 m.invoke(null, ctx)
             } catch (t: Throwable) {
-                Log.w(TAG, "主动开库 ${m.name} 失败", t)
+                if (!openFailLogged) {
+                    openFailLogged = true
+                    Log.w(TAG, "主动开库 ${m.name} 失败（本进程多半不是库进程，之后静默）", t)
+                }
                 null
             }
             if (created != null) {
@@ -145,6 +148,8 @@ class DbAccess(private val xposed: XposedInterface) {
     }
 
     /** 按类型找单例字段：字段名会被混淆，类型不会。 */
+    @Volatile private var openFailLogged = false
+
     private fun findDbInstance(appDb: Class<*>): Any? {
         for (f in appDb.declaredFields) {
             if (!java.lang.reflect.Modifier.isStatic(f.modifiers)) continue

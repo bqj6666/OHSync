@@ -56,6 +56,7 @@ object RemoteConfig {
             }
         } catch (t: Throwable) {
             Log.w(TAG, "取配置失败（主进程可能未启动）", t)
+            diagnose(ctx)
             null
         }
         if (got != null) {
@@ -67,6 +68,31 @@ object RemoteConfig {
         // 此时**不能**回退到旧缓存 —— 否则进程已经死了也会被判为就绪，
         // 结果就是推送全部失败（踩过）。
         return if (force) got else got ?: cached
+    }
+
+    @Volatile private var diagnosed = false
+
+    /** 临时诊断：从宿主进程视角看 OHSync 是否可见、provider 能否解析。 */
+    private fun diagnose(ctx: android.content.Context) {
+        if (diagnosed) return
+        diagnosed = true
+        try {
+            val pm = ctx.packageManager
+            val vis = try {
+                pm.getPackageInfo(OHSYNC_PACKAGE, 0)
+                "可见"
+            } catch (e: Throwable) {
+                "不可见(${e.javaClass.simpleName})"
+            }
+            val cp = try {
+                val info = pm.resolveContentProvider("$OHSYNC_PACKAGE$PROVIDER_SUFFIX", 0)
+                if (info == null) "null" else "有(${info.processName})"
+            } catch (e: Throwable) {
+                "异常(${e.javaClass.simpleName})"
+            }
+            Log.w(TAG, "诊断：包=$vis，provider=$cp，uid=${android.os.Process.myUid()}，进程=${android.os.Process.myProcessName()}")
+        } catch (_: Throwable) {
+        }
     }
 
     /** 告诉主进程本次推送完成的时间点，下次增量只取这之后的数据。 */
