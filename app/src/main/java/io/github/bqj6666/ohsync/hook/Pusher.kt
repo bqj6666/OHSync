@@ -29,6 +29,9 @@ object Pusher {
     /** 等主进程就绪的最长时间。 */
     private const val WAIT_READY_MS = 12_000L
 
+    /** 每次最多发多少个睡眠会话，避免 Binder 事务超限。 */
+    private const val SLEEP_BATCH = 15
+
     fun push(reader: TableReader, incremental: Boolean = false) {
         val specs = QueryPlan.forTables(reader, incremental)
         val sleep = SleepBuilder.build(reader)
@@ -42,8 +45,20 @@ object Pusher {
         }
 
         var total = 0
-        if (sleep.isNotEmpty() && send(RecordType.SLEEP_SESSION.id, sleep)) {
-            total += sleep.size
+        if (sleep.isNotEmpty()) {
+            // 睡眠一条会话带几十个阶段，整批塞进一次 Binder 事务容易超限：
+            // 按会话分片发送，任一片失败就停，避免半截数据。
+            var sent = 0
+            for (chunk in sleep.chunked(SLEEP_BATCH)) {
+                if (!send(RecordType.SLEEP_SESSION.id, chunk)) break
+                sent += chunk.size
+            }
+            if (sent > 0) {
+                total += sent
+                Log.i(TAG, "睡眠：$sent 条")
+            } else {
+                Log.e(TAG, "睡眠推送失败（共 ${sleep.size} 段）")
+            }
         }
         for (spec in specs) {
             val rows = reader.query(spec.sql)
@@ -98,16 +113,23 @@ object Pusher {
         if (RemoteConfig.fetch() == null || TokenHolder.token.isEmpty()) return false
         val ctx = AppContextHolder.context ?: return false
         return try {
+            val payload = PayloadCodec.encode(records)
             val values = ContentValues().apply {
                 put("token", TokenHolder.token)
                 put("type", type)
-                put("payload", PayloadCodec.encode(records))
+                put("payload", payload)
             }
-            ctx.contentResolver.insert(
+            val uri = ctx.contentResolver.insert(
                 Uri.parse("content://$OHSYNC_PACKAGE$PROVIDER_SUFFIX/records"),
                 values,
             )
-            true
+            if (uri == null) {
+                Log.e(TAG, "推送 $type 被主进程拒绝（${records.size} 条，${payload.length} 字节）")
+                false
+            } else {
+                Log.i(TAG, "发送 $type：${records.size} 条，${payload.length} 字节")
+                true
+            }
         } catch (t: Throwable) {
             Log.e(TAG, "推送 $type 失败", t)
             false
