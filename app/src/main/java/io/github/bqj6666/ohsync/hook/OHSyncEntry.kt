@@ -16,15 +16,10 @@ internal const val TAG = "OHSyncHook"
  */
 class OHSyncEntry : XposedModule(), XposedModuleInterface {
 
-    init {
-        probe("entry")
-    }
-
     private val coordinator = HookCoordinator(this)
 
     /** 阶段一：App 创建之前只装 hook，赶在 OPPO 自己开库之前。 */
     override fun onPackageLoaded(param: XposedModuleInterface.PackageLoadedParam) {
-        probe("loaded")
         if (param.packageName != TARGET_PACKAGE) return
         coordinator.onPackageLoaded(param.defaultClassLoader)
     }
@@ -32,23 +27,11 @@ class OHSyncEntry : XposedModule(), XposedModuleInterface {
     override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
         // 作用域已由 module.prop 的 staticScope + scope.list 限定，这里再挡一道，
         // 防止用户手动改作用域把模块塞进别的 App。
-        probe("ready")
         if (param.packageName != TARGET_PACKAGE) return
         Log.i(TAG, "package ready: ${param.packageName}")
         coordinator.onPackageReady(param.classLoader)
     }
 
-    /** 临时排障探针：模块到底有没有被 LSPosed 实例化、回调有没有来。 */
-    private fun probe(what: String) {
-        try {
-            val dir = java.io.File("/data/data/com.heytap.health/files/ohsync_probe")
-            dir.mkdirs()
-            java.io.File(dir, "pid${android.os.Process.myPid()}_$what.txt")
-                .writeText("${android.os.Process.myProcessName()} $what\n")
-            android.util.Log.i(TAG, "probe: ${android.os.Process.myProcessName()} $what")
-        } catch (_: Throwable) {
-        }
-    }
 
     companion object {
         const val TARGET_PACKAGE = "com.heytap.health"
