@@ -41,10 +41,11 @@ class OHSyncEntry : XposedModule(), XposedModuleInterface {
     /** 临时排障探针：模块到底有没有被 LSPosed 实例化、回调有没有来。 */
     private fun probe(what: String) {
         try {
-            val dir = java.io.File("/data/local/tmp/ohsync_probe")
+            val dir = java.io.File("/data/data/com.heytap.health/files/ohsync_probe")
             dir.mkdirs()
             java.io.File(dir, "pid${android.os.Process.myPid()}_$what.txt")
                 .writeText("${android.os.Process.myProcessName()} $what\n")
+            android.util.Log.i(TAG, "probe: ${android.os.Process.myProcessName()} $what")
         } catch (_: Throwable) {
         }
     }
