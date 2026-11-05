@@ -204,6 +204,13 @@ binding does not help either (measured).
 Make sure the module is enabled in LSPosed with OPPO Health in scope, and open OPPO Health
 once. The app's status card shows whether the reader and write permission are ready.
 
+## Changelog
+
+Full history in [CHANGELOG.md](CHANGELOG.md). Latest:
+
+- **1.2.0** (2026-11-05): support OPPO Health 6.10.13 (`INSTANCE`→`f`, `getInstance`→`G`);
+  fix sleep data being dropped entirely; add a provider fallback channel
+
 ## Build
 
 ```bash
