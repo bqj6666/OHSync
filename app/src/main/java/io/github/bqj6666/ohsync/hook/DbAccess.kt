@@ -2,6 +2,7 @@ package io.github.bqj6666.ohsync.hook
 
 import android.util.Log
 import io.github.libxposed.api.XposedInterface
+import java.lang.reflect.Modifier
 
 /**
  * 拿到 OPPO 健康的数据库实例（只读使用）。
@@ -78,15 +79,64 @@ class DbAccess(private val xposed: XposedInterface) {
      * 做法就是调它自己的入口 AppDatabase.getInstance(Context) —— 幂等、只读用途，
      * 相当于提前把它本来也会做的初始化做掉，不修改任何健康数据。
      */
-    private fun tryTriggerOpen(appDb: Class<*>): Boolean {
-        if (AppContextHolder.context == null) AppContextHolder.init()
-        val ctx = AppContextHolder.context ?: return false
-        return runCatching {
-            val m = appDb.getDeclaredMethod("getInstance", android.content.Context::class.java)
-            m.isAccessible = true
-            val created = m.invoke(null, ctx)
-            created != null
-        }.onFailure { Log.w(TAG, "主动开库失败", it) }.getOrDefault(false)
+    private fun triggerOpen(appDb: Class<*>, ctx: android.content.Context): Boolean {
+        for (m in appDb.declaredMethods) {
+            if (!Modifier.isStatic(m.modifiers)) continue
+            if (!appDb.isAssignableFrom(m.returnType)) continue
+            val params = m.parameterTypes
+            if (params.size != 1 || !params[0].isAssignableFrom(ctx.javaClass)) continue
+            val created = runCatching {
+                m.isAccessible = true
+                m.invoke(null, ctx)
+            }.getOrNull()
+            if (created != null) {
+                Log.i(TAG, "已主动触发 OPPO 数据库初始化（${m.name}）")
+                return true
+            }
+        }
+        return false
+    }
+
+    /**
+     * 按「类型」而不是「名字」找实例。
+     * 6.10.13 把 INSTANCE 改名成 f、getInstance 改名成 G，写死名字必然再断一次。
+     */
+    private fun findInstance(appDb: Class<*>, ctx: android.content.Context?): Any? {
+        for (f in appDb.declaredFields) {
+            if (!Modifier.isStatic(f.modifiers)) continue
+            if (!appDb.isAssignableFrom(f.type)) continue
+            val v = runCatching {
+                f.isAccessible = true
+                f.get(null)
+            }.getOrNull()
+            if (v != null) {
+                Log.i(TAG, "路 B：静态字段 ${f.name} 命中")
+                return v
+            }
+        }
+        if (ctx == null) return null
+        for (m in appDb.declaredMethods) {
+            if (!Modifier.isStatic(m.modifiers)) continue
+            if (!appDb.isAssignableFrom(m.returnType)) continue
+            val params = m.parameterTypes
+            val args = arrayOfNulls<Any?>(params.size)
+            var ok = params.size <= 1
+            if (ok && params.size == 1) {
+                if (params[0].isAssignableFrom(ctx.javaClass)) args[0] = ctx else ok = false
+            }
+            if (!ok) continue
+            // 不打印堆栈：G() 依赖 App 自己的初始化器，初始化完成前必然 NPE，
+            // 4 个进程 × 每 3 秒一次会把 logcat 刷满
+            val v = runCatching {
+                m.isAccessible = true
+                m.invoke(null, *args)
+            }.getOrNull()
+            if (v != null) {
+                Log.i(TAG, "路 B：静态方法 ${m.name} 命中")
+                return v
+            }
+        }
+        return null
     }
 
     private fun tryReflection(classLoader: ClassLoader, attempt: Int) {
@@ -96,21 +146,17 @@ class DbAccess(private val xposed: XposedInterface) {
             Log.i(TAG, "路 B：AppDatabase 不存在")
             return
         }
-        val instance = try {
-            appDb.getDeclaredField("INSTANCE").apply { isAccessible = true }.get(null)
-        } catch (t: Throwable) {
-            Log.w(TAG, "路 B：读 INSTANCE 失败", t)
-            return
-        }
+        if (AppContextHolder.context == null) AppContextHolder.init()
+        val ctx = AppContextHolder.context
+        val instance = findInstance(appDb, ctx)
         if (instance == null) {
             // 还没初始化过：主动触发一次，别干等 OPPO 自己想起来开库
             if (attempt == 1 || attempt % 10 == 1) {
-                Log.i(TAG, "路 B 第 $attempt 次：INSTANCE 为 null，主动触发开库")
+                Log.i(TAG, "路 B 第 $attempt 次：实例为空，主动触发开库")
             }
-            if (tryTriggerOpen(appDb)) {
-                // 触发成功后下一轮就能从 INSTANCE 取到实例
-                Log.i(TAG, "已主动触发 OPPO 数据库初始化")
-            }
+            // 主动开库依赖 App 自己的初始化器（6.10.13 起 G() 内部要它），初始化前必 NPE；
+            // 降到每 20 轮（约 1 分钟）试一次，失败静默，主要仍靠 App 自己开库后字段命中
+            if (ctx != null && attempt % 20 == 1) triggerOpen(appDb, ctx)
             return
         }
         // Room 的 RoomDatabase.getOpenHelper() -> SupportSQLiteOpenHelper
@@ -126,7 +172,7 @@ class DbAccess(private val xposed: XposedInterface) {
             Log.w(TAG, "路 B：getReadableDatabase 失败", t)
             return
         }
-        if (db != null) deliver(db, "reflection AppDatabase.INSTANCE")
+        if (db != null) deliver(db, "reflection AppDatabase")
     }
 
     private fun deliver(database: Any, how: String) {
@@ -140,7 +186,7 @@ class DbAccess(private val xposed: XposedInterface) {
         private const val TAG = "OHSyncDb"
         private const val APP_DATABASE = "com.heytap.databaseengineservice.db.AppDatabase"
         private const val RETRY_MS = 3000L
-        private const val MAX_TRIES = 200
+        private const val MAX_TRIES = 1200
 
         private val DB_GETTERS = setOf("getReadableDatabase", "getWritableDatabase")
 
